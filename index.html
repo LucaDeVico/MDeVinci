@@ -1,0 +1,1429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F3F0E9">
+<title>Markdown editor</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="stylesheet" href="vendor/katex.min.css">
+<style id="hljsStyle"></style>
+<style>
+/* ---------------------------------------------------------------
+   Palette: paper and two drawing media — red chalk (sanguigna) for
+   actions, azurite blue for links. Nothing else is coloured.
+   --------------------------------------------------------------- */
+:root{
+  --paper:#FCFBF8;
+  --chrome:#F1EEE7;
+  --ink:#23262B;
+  --ink-soft:#63676F;
+  --rule:#DDD8CD;
+  --chalk:#AE4630;
+  --azurite:#2E5A87;
+  --shadow:rgba(35,38,43,.10);
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+  --serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
+}
+html[data-theme="dark"]{
+  --paper:#1B1D21;
+  --chrome:#15171A;
+  --ink:#E7E3DA;
+  --ink-soft:#9A9FA8;
+  --rule:#33373E;
+  --chalk:#D97A62;
+  --azurite:#88AFD6;
+  --shadow:rgba(0,0,0,.4);
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  font-family:var(--sans);
+  color:var(--ink);
+  background:var(--chrome);
+  display:flex;flex-direction:column;
+  overflow:hidden;
+  -webkit-text-size-adjust:100%;
+}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--azurite);outline-offset:1px}
+
+/* ---------- top bar ---------- */
+header{
+  display:flex;align-items:center;gap:.5rem;
+  padding:.45rem .7rem;
+  padding-top:calc(.45rem + env(safe-area-inset-top));
+  background:var(--chrome);
+  border-bottom:1px solid var(--rule);
+  flex:none;
+}
+.wordmark{font-weight:600;letter-spacing:.01em;font-size:.98rem;white-space:nowrap}
+.wordmark span{color:var(--chalk)}
+.wordmark .ver{font-weight:400;font-size:.72rem;color:var(--ink-soft);
+  font-family:var(--mono);margin-left:.3rem;vertical-align:.08em}
+.filename{
+  font-family:var(--mono);font-size:.78rem;color:var(--ink-soft);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;
+}
+.filename b{font-weight:500;color:var(--chalk)}   /* unsaved marker */
+.bar-actions{display:flex;align-items:center;gap:.25rem;flex:none}
+
+.btn{
+  background:transparent;border:1px solid transparent;border-radius:5px;
+  padding:.32rem .5rem;font-size:.82rem;cursor:pointer;line-height:1.2;
+  white-space:nowrap;display:inline-flex;align-items:center;gap:.3rem;
+}
+.btn:hover{background:rgba(174,70,48,.10)}
+.btn:active{transform:translateY(1px)}
+.btn.outlined{border-color:var(--rule);background:var(--paper)}
+.btn.icon{padding:.34rem;min-width:2rem;justify-content:center}
+.btn svg{display:block}
+.caret{width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;
+  border-top:5px solid currentColor;opacity:.65;margin-left:.1rem}
+
+/* ---------- dropdown ---------- */
+.dropdown{position:relative}
+.menu{
+  position:absolute;right:0;top:calc(100% + 6px);z-index:40;
+  background:var(--paper);border:1px solid var(--rule);border-radius:7px;
+  box-shadow:0 6px 22px var(--shadow);padding:.28rem;min-width:13.5rem;
+}
+.menu[hidden]{display:none}
+.menu button{
+  display:flex;width:100%;align-items:baseline;gap:.5rem;
+  background:transparent;border:0;border-radius:5px;text-align:left;
+  padding:.42rem .55rem;font-size:.85rem;cursor:pointer;
+}
+.menu button:hover{background:rgba(174,70,48,.10)}
+.menu .hint{margin-left:auto;font-size:.72rem;color:var(--ink-soft);font-family:var(--mono)}
+.menu hr{border:0;border-top:1px solid var(--rule);margin:.28rem .3rem}
+
+/* ---------- formatting rail ---------- */
+.rail{
+  display:flex;gap:.15rem;align-items:center;
+  padding:.25rem .55rem;background:var(--chrome);
+  border-bottom:1px solid var(--rule);
+  overflow-x:auto;scrollbar-width:none;flex:none;
+}
+.rail::-webkit-scrollbar{display:none}
+.rail button{
+  background:transparent;border:0;border-radius:5px;cursor:pointer;
+  padding:.3rem .45rem;font-size:.85rem;min-width:2rem;
+  display:inline-flex;align-items:center;justify-content:center;
+}
+.rail button:hover{background:rgba(35,38,43,.08)}
+html[data-theme="dark"] .rail button:hover{background:rgba(255,255,255,.10)}
+.rail .sep{width:1px;height:1.2rem;background:var(--rule);margin:0 .3rem;flex:none}
+.rail .g-serif{font-family:var(--serif)}
+.rail .g-mono{font-family:var(--mono);font-size:.8rem}
+
+/* ---------- panes ---------- */
+main{flex:1;display:flex;min-height:0;background:var(--chrome)}
+.pane{min-width:0;min-height:0;display:flex;flex-direction:column;flex:1}
+.divider{width:9px;flex:none;cursor:col-resize;background:transparent;
+  display:flex;align-items:center;justify-content:center}
+.divider::after{content:"";width:1px;height:100%;background:var(--rule)}
+.divider:hover::after{background:var(--chalk)}
+
+textarea#source{
+  flex:1;width:100%;resize:none;border:0;outline:0;
+  padding:1.1rem 1.2rem 4rem;
+  font-family:var(--mono);font-size:.88rem;line-height:1.65;
+  color:var(--ink);background:var(--paper);tab-size:2;
+}
+.preview-wrap{flex:1;overflow:auto;background:var(--chrome);padding:1rem .8rem 4rem}
+.page{
+  max-width:44em;margin:0 auto;background:var(--paper);
+  padding:2.4rem 2.6rem;border:1px solid var(--rule);
+  box-shadow:0 1px 3px var(--shadow);
+}
+
+/* ---------- rendered document ---------- */
+.doc{font-family:var(--serif);font-size:1.02rem;line-height:1.62;color:var(--ink)}
+.doc>*:first-child{margin-top:0}
+.doc h1,.doc h2,.doc h3,.doc h4{font-family:var(--sans);line-height:1.25;margin:1.8em 0 .5em;font-weight:600}
+.doc h1{font-size:1.72em;margin-top:0}
+.doc h2{font-size:1.32em;padding-bottom:.18em;border-bottom:1px solid var(--rule)}
+.doc h3{font-size:1.1em}
+.doc h4{font-size:1em;color:var(--ink-soft)}
+.doc p{margin:0 0 1em}
+.doc a{color:var(--azurite);text-decoration:underline;text-underline-offset:2px}
+.doc blockquote{margin:1.2em 0;padding:.1em 0 .1em 1.1em;
+  border-left:2px solid var(--chalk);color:var(--ink-soft);font-style:italic}
+.doc blockquote p:last-child{margin-bottom:0}
+.doc ul,.doc ol{padding-left:1.4em;margin:0 0 1em}
+.doc li{margin:.25em 0}
+.doc li>ul,.doc li>ol{margin:.25em 0}
+.doc li input[type=checkbox]{margin-right:.45em}
+.doc ul:has(>li>input[type=checkbox]){list-style:none;padding-left:.3em}
+.doc code{font-family:var(--mono);font-size:.86em;background:rgba(35,38,43,.06);padding:.12em .32em;border-radius:3px}
+html[data-theme="dark"] .doc code{background:rgba(255,255,255,.08)}
+.doc pre{background:var(--chrome);border:1px solid var(--rule);border-radius:5px;
+  padding:.85em 1em;overflow:auto;margin:0}
+.doc pre code{background:none;padding:0;font-size:.82em;line-height:1.55}
+.doc table{border-collapse:collapse;width:100%;margin:0 0 1.3em;font-size:.94em;font-family:var(--sans)}
+.doc th,.doc td{border:1px solid var(--rule);padding:.4em .6em;text-align:left}
+.doc th{background:var(--chrome);font-weight:600}
+.doc hr{border:0;border-top:1px solid var(--rule);margin:2em 0}
+.doc img{max-width:100%;height:auto}
+.doc .mermaid-block{margin:0 0 1.3em;text-align:center;overflow:auto}
+.doc .mermaid-block svg{max-width:100% !important;height:auto}
+.doc .render-error{font-family:var(--mono);font-size:.78rem;color:var(--chalk);
+  border:1px dashed var(--chalk);padding:.5em .7em;border-radius:4px;margin-bottom:1.2em}
+.doc .mermaid-block.stale svg{opacity:.35}
+.doc .diagram-note{font-family:var(--mono);font-size:.7rem;color:var(--ink-soft);margin-top:.3em}
+.doc .diagram-pending{font-family:var(--mono);font-size:.76rem;color:var(--ink-soft);
+  border:1px dashed var(--rule);border-radius:4px;padding:.9em;text-align:center}
+.doc .katex-display{overflow-x:auto;overflow-y:hidden;padding:.2em 0}
+
+/* code block with a copy button */
+.code-wrap{position:relative;margin:0 0 1.2em}
+.copy-btn{
+  position:absolute;top:.4rem;right:.4rem;
+  font-family:var(--sans);font-size:.7rem;line-height:1;
+  display:flex;align-items:center;gap:.25rem;
+  background:var(--paper);color:var(--ink-soft);
+  border:1px solid var(--rule);border-radius:4px;
+  padding:.28rem .4rem;cursor:pointer;opacity:0;transition:opacity .15s;
+}
+.code-wrap:hover .copy-btn,.copy-btn:focus-visible{opacity:1}
+.copy-btn:hover{color:var(--ink);border-color:var(--ink-soft)}
+.copy-btn.done{color:var(--chalk);border-color:var(--chalk);opacity:1}
+@media (hover:none){.copy-btn{opacity:.75}}
+
+/* ---------- status bar ---------- */
+footer{
+  flex:none;display:flex;align-items:center;gap:.8rem;
+  padding:.3rem .8rem;padding-bottom:calc(.3rem + env(safe-area-inset-bottom));
+  background:var(--chrome);border-top:1px solid var(--rule);
+  font-size:.74rem;color:var(--ink-soft);font-family:var(--mono);
+}
+footer .grow{flex:1}
+#filenameFoot{display:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:45vw}
+#status{transition:opacity .3s}
+#btnImages{
+  font:inherit;background:transparent;border:1px solid var(--rule);border-radius:4px;
+  color:var(--ink-soft);padding:.05rem .35rem;cursor:pointer;
+}
+#btnImages:hover{color:var(--ink);border-color:var(--ink-soft)}
+
+.img-row{display:flex;gap:.7rem;align-items:center;padding:.5rem 0;border-top:1px solid var(--rule)}
+.img-row img{width:52px;height:52px;object-fit:cover;border:1px solid var(--rule);border-radius:4px;background:var(--chrome)}
+.img-meta{flex:1;min-width:0;font-size:.82rem}
+.img-meta code{font-family:var(--mono);font-size:.78rem;color:var(--chalk)}
+.img-meta .sub{color:var(--ink-soft);font-size:.75rem}
+.img-row .btn{font-size:.76rem;padding:.25rem .4rem}
+
+/* ---------- narrow screens: tabs instead of split ---------- */
+.tabs{display:none;gap:.15rem;flex:none}
+.tabs button{background:transparent;border:0;border-bottom:2px solid transparent;
+  padding:.3rem .5rem;font-size:.82rem;cursor:pointer}
+.tabs button[aria-selected="true"]{border-bottom-color:var(--chalk);font-weight:600}
+@media (max-width:820px){
+  .tabs{display:flex}
+  .divider{display:none}
+  body[data-view="write"] .pane.preview{display:none}
+  body[data-view="read"] .pane.editor{display:none}
+  body[data-view="read"] .rail{display:none}   /* nothing to format from here */
+  .pane{flex:1 1 100% !important}
+  .page{padding:1.3rem 1.1rem;border:0;box-shadow:none}
+  .preview-wrap{padding:.4rem}
+  .wordmark{display:none}
+  .filename{display:none}          /* the file name moves to the status bar */
+  #filenameFoot{display:inline}
+  header{gap:.3rem}
+  .tabs{flex:1}
+}
+
+/* ---------- dialogs ---------- */
+dialog{
+  border:1px solid var(--rule);border-radius:8px;padding:0;
+  background:var(--paper);color:var(--ink);max-width:min(30rem,92vw);
+  box-shadow:0 8px 30px var(--shadow);
+}
+dialog::backdrop{background:rgba(20,20,20,.35)}
+.dlg-body{padding:1.2rem 1.3rem;font-size:.9rem;line-height:1.55}
+.dlg-body h2{margin:0 0 .6rem;font-size:1.05rem}
+.dlg-body p{margin:.5rem 0}
+.dlg-body ul{margin:.4rem 0;padding-left:1.2rem}
+.dlg-body kbd{font-family:var(--mono);font-size:.8em;border:1px solid var(--rule);border-radius:3px;padding:0 .3em}
+.dlg-foot{display:flex;justify-content:flex-end;gap:.5rem;padding:.7rem 1.3rem 1.1rem}
+input[type=text]{font:inherit;font-size:.9rem;padding:.4rem .5rem;width:100%;
+  border:1px solid var(--rule);border-radius:5px;background:var(--paper);color:var(--ink)}
+
+/* ---------- print: the preview only, as a clean document ---------- */
+@media print{
+  @page{size:A4;margin:20mm 18mm}
+  html,body{height:auto;overflow:visible;background:#fff}
+  header,.rail,footer,.divider,.pane.editor,dialog,.copy-btn{display:none !important}
+  main{display:block}
+  .pane.preview{display:block !important}
+  .preview-wrap{overflow:visible;padding:0;background:#fff}
+  .page{max-width:none;border:0;box-shadow:none;padding:0;background:#fff}
+  .doc{font-size:11.5pt;line-height:1.5;color:#000}
+  .doc a{color:#000;text-decoration:underline}
+  .doc h1,.doc h2,.doc h3,.doc h4{break-after:avoid;page-break-after:avoid}
+  .doc pre,.doc blockquote,.doc table,.doc .mermaid-block,.doc .katex-display,.code-wrap{
+    break-inside:avoid;page-break-inside:avoid}
+  .doc pre{background:#fafafa;border:1px solid #ddd}
+  .doc img,.doc .mermaid-block svg{max-width:100%}
+}
+</style>
+</head>
+<body data-view="write">
+
+<header>
+  <div class="wordmark" id="wordmark">MD</div>
+  <div class="filename" id="filename">untitled.md</div>
+
+  <div class="tabs" role="tablist">
+    <button id="tabWrite" role="tab" aria-selected="true">Write</button>
+    <button id="tabRead" role="tab" aria-selected="false">Read</button>
+  </div>
+
+  <div class="bar-actions">
+    <button class="btn icon" id="btnNew" title="New document" aria-label="New document">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+        stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>
+        <path d="M12 11v6M9 14h6"/></svg>
+    </button>
+
+    <button class="btn outlined" id="btnOpen" title="Open a Markdown file (Ctrl/Cmd+O)">Open</button>
+
+    <span class="dropdown">
+      <button class="btn outlined" id="btnSave" aria-haspopup="menu" aria-expanded="false"
+        title="Save or export">Save<i class="caret"></i></button>
+      <div class="menu" id="saveMenu" role="menu" hidden>
+        <button id="saveMd" role="menuitem">Markdown<span class="hint">.md</span></button>
+        <button id="saveMdAs" role="menuitem">Markdown, new file<span class="hint">.md</span></button>
+        <hr>
+        <button id="saveHtml" role="menuitem">Web page<span class="hint">.html</span></button>
+        <button id="savePdf" role="menuitem">Print or save<span class="hint">.pdf</span></button>
+      </div>
+    </span>
+
+    <button class="btn icon" id="btnTheme" title="Switch theme" aria-label="Switch theme">
+      <svg id="themeIcon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/>
+        <path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.4 5.4l1.6 1.6M17 17l1.6 1.6M18.6 5.4L17 7M7 17l-1.6 1.6"/></svg>
+    </button>
+
+    <button class="btn icon" id="btnAbout" title="About and shortcuts" aria-label="About">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+        stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5"/><circle cx="12" cy="7.8" r=".9" fill="currentColor" stroke="none"/></svg>
+    </button>
+  </div>
+</header>
+
+<div class="rail" id="rail">
+  <button data-act="h" title="Heading — press again for the next level">H</button>
+  <button data-act="bold" title="Bold (Ctrl/Cmd+B)"><b>B</b></button>
+  <button data-act="italic" class="g-serif" title="Italic (Ctrl/Cmd+I)"><i>I</i></button>
+  <button data-act="strike" title="Strikethrough"><s>S</s></button>
+  <span class="sep"></span>
+  <button data-act="ul" title="Bulleted list">•</button>
+  <button data-act="ol" title="Numbered list">1.</button>
+  <button data-act="task" title="Task list">☑</button>
+  <button data-act="indent" title="Indent list item (Tab)">⇥</button>
+  <button data-act="outdent" title="Outdent list item (Shift+Tab)">⇤</button>
+  <button data-act="quote" title="Quote">❝</button>
+  <span class="sep"></span>
+  <button data-act="link" title="Link (Ctrl/Cmd+K)" aria-label="Link">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+      stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1.5 1.5"/>
+      <path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1.5-1.5"/></svg>
+  </button>
+  <button data-act="image" title="Insert an image file" aria-label="Insert image">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.6"/>
+      <path d="M21 16l-5-5-6 6-3-3-4 4"/></svg>
+  </button>
+  <button data-act="table" title="Insert table">▦</button>
+  <span class="sep"></span>
+  <button data-act="code" class="g-mono" title="Inline code">&lt;/&gt;</button>
+  <button data-act="fence" class="g-mono" title="Code block">{ }</button>
+  <button data-act="math" class="g-serif" title="Math (LaTeX)"><i>ƒ</i>x</button>
+  <button data-act="mermaid" title="Mermaid diagram">◇</button>
+  <span class="sep"></span>
+  <button data-act="rule" title="Horizontal rule">—</button>
+</div>
+
+<main>
+  <section class="pane editor">
+    <textarea id="source" spellcheck="true" autocapitalize="sentences"
+      placeholder="# Start typing&#10;&#10;Markdown goes here. The rendered document appears beside it."></textarea>
+  </section>
+  <div class="divider" id="divider" role="separator" aria-orientation="vertical" title="Drag to resize"></div>
+  <section class="pane preview">
+    <div class="preview-wrap" id="previewWrap">
+      <article class="page"><div class="doc" id="doc"></div></article>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <span id="filenameFoot"></span>
+  <span id="counts">0 words</span>
+  <button id="btnImages" hidden>0 images</button>
+  <span class="grow"></span>
+  <span id="status"></span>
+</footer>
+
+<!-- fallbacks for browsers without the File System Access API -->
+<input type="file" id="filePicker" accept=".md,.markdown,.mdown,.txt,text/markdown,text/plain" hidden>
+<input type="file" id="imagePicker" accept="image/*" hidden>
+
+<dialog id="nameDlg">
+  <div class="dlg-body">
+    <h2>File name</h2>
+    <input type="text" id="nameInput" autocomplete="off">
+  </div>
+  <div class="dlg-foot">
+    <button class="btn" id="nameCancel">Cancel</button>
+    <button class="btn outlined" id="nameOk">Save</button>
+  </div>
+</dialog>
+
+<dialog id="imagesDlg">
+  <div class="dlg-body">
+    <h2>Embedded images</h2>
+    <p id="imagesIntro"></p>
+    <div id="imagesList"></div>
+  </div>
+  <div class="dlg-foot">
+    <button class="btn" id="imagesAdd">Add an image</button>
+    <button class="btn outlined" id="imagesClose">Close</button>
+  </div>
+</dialog>
+
+<dialog id="aboutDlg">
+  <div class="dlg-body" id="aboutBody"></div>
+  <div class="dlg-foot"><button class="btn outlined" id="aboutClose">Close</button></div>
+</dialog>
+
+<script src="app-config.js"></script>
+<script src="vendor/hljs-css.js"></script>
+<script src="vendor/marked.umd.js"></script>
+<script src="vendor/purify.min.js"></script>
+<script src="vendor/katex.min.js"></script>
+<script src="vendor/highlight.min.js"></script>
+<script>
+"use strict";
+/* =================================================================
+   1. Identity — everything visible comes from app-config.js
+   ================================================================= */
+const APP = window.APP_CONFIG || {
+  NAME:"Markdown", TAGLINE:"Markdown, written and read", VERSION:"0.1", AUTHOR:""
+};
+document.title = APP.NAME;
+(function setWordmark(){
+  const el = document.getElementById("wordmark");
+  const n = APP.NAME;
+  const name = /^md/i.test(n)
+    ? escapeHtml(n.slice(0,2)) + "<span>" + escapeHtml(n.slice(2)) + "</span>"
+    : escapeHtml(n);
+  el.innerHTML = name + '<span class="ver">v' + escapeHtml(APP.VERSION) + "</span>";
+})();
+const STORE_KEY = "mdedit:" + APP.NAME + ":draft";
+const PREF_KEY  = "mdedit:" + APP.NAME + ":prefs";
+
+/* label -> data URI; declared early because the draft is restored
+   before the rest of the image code is reached */
+const images = new Map();
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+/* =================================================================
+   2. Preferences
+   ================================================================= */
+const prefs = Object.assign({theme:"light", split:50, view:"write"}, readJSON(PREF_KEY));
+function readJSON(k){ try{ return JSON.parse(localStorage.getItem(k)) || {}; }catch(e){ return {}; } }
+function savePrefs(){ try{ localStorage.setItem(PREF_KEY, JSON.stringify(prefs)); }catch(e){} }
+function applyTheme(){
+  document.documentElement.dataset.theme = prefs.theme;
+  const hl = window.HLJS_CSS;
+  if (hl) document.getElementById("hljsStyle").textContent =
+    prefs.theme === "dark" ? hl.dark : hl.light;
+  document.querySelector('meta[name=theme-color]')
+    .setAttribute("content", prefs.theme === "dark" ? "#15171A" : "#F3F0E9");
+  document.getElementById("themeIcon").innerHTML = prefs.theme === "dark"
+    ? '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>'
+    : '<circle cx="12" cy="12" r="4.2"/><path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2'
+      + 'M5.4 5.4l1.6 1.6M17 17l1.6 1.6M18.6 5.4L17 7M7 17l-1.6 1.6"/>';
+}
+applyTheme();
+
+/* =================================================================
+   3. Markdown -> HTML
+   ================================================================= */
+let mathOutput = "htmlAndMathml";   // switched to "mathml" for HTML export
+
+function renderMath(tex, display){
+  try{
+    return katex.renderToString(tex, {displayMode:display, throwOnError:false, output:mathOutput});
+  }catch(err){
+    return '<span class="render-error">' + escapeHtml(err.message) + '</span>';
+  }
+}
+const mathInline = {
+  name:"mathInline", level:"inline",
+  start(src){ return src.indexOf("$"); },
+  tokenizer(src){
+    // a $ must hug its content, so "costs $5 and $7" is left alone
+    const m = /^\$([^\s$][^$\n]*?[^\s$]|[^\s$])\$/.exec(src);
+    if (m) return {type:"mathInline", raw:m[0], text:m[1]};
+  },
+  renderer(t){ return renderMath(t.text, false); }
+};
+const mathBlock = {
+  name:"mathBlock", level:"block",
+  start(src){ return src.indexOf("$$"); },
+  tokenizer(src){
+    const m = /^\$\$([\s\S]+?)\$\$(?:\n+|$)/.exec(src);
+    if (m) return {type:"mathBlock", raw:m[0], text:m[1].trim()};
+  },
+  renderer(t){ return renderMath(t.text, true); }
+};
+
+function codeRenderer(a, b){
+  const text = (typeof a === "object" && a !== null) ? a.text : a;
+  const lang = ((typeof a === "object" && a !== null) ? (a.lang || "") : (b || "")).trim().split(/\s+/)[0];
+  if (lang === "mermaid"){
+    return '<div class="mermaid-block"><pre class="mmd-src" hidden>' + escapeHtml(text) + "</pre></div>";
+  }
+  let body;
+  if (lang && window.hljs && hljs.getLanguage(lang)){
+    try { body = hljs.highlight(text, {language:lang}).value; }
+    catch(e){ body = escapeHtml(text); }
+  } else {
+    body = escapeHtml(text);
+  }
+  return '<pre><code class="hljs' + (lang ? " language-" + escapeHtml(lang) : "") + '">' + body + "</code></pre>\n";
+}
+
+marked.use({
+  gfm:true,
+  breaks:false,
+  extensions:[mathInline, mathBlock],
+  renderer:{ code: codeRenderer }
+});
+
+function markdownToHtml(md){
+  const raw = marked.parse(md);
+  return DOMPurify.sanitize(raw, {
+    USE_PROFILES:{html:true, svg:true, svgFilters:true, mathMl:true},
+    ADD_ATTR:["target","rel"]
+  });
+}
+
+/* ---- Mermaid, loaded only when a diagram actually appears ---- */
+let mermaidPromise = null;
+function initMermaid(){
+  mermaid.initialize({
+    startOnLoad:false, securityLevel:"strict",
+    theme: prefs.theme === "dark" ? "dark" : "neutral",
+    fontFamily:"var(--sans)"
+  });
+  return window.mermaid;
+}
+function loadMermaid(){
+  if (mermaidPromise) return mermaidPromise;
+  if (window.mermaid){                      // already inlined in this page
+    mermaidPromise = Promise.resolve(initMermaid());
+    return mermaidPromise;
+  }
+  mermaidPromise = new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "vendor/mermaid.min.js";
+    s.onload = () => resolve(initMermaid());
+    s.onerror = () => reject(new Error("Mermaid could not be loaded"));
+    document.head.appendChild(s);
+  });
+  return mermaidPromise;
+}
+let mermaidSeq = 0;
+const diagramCache = new Map();     // source -> rendered SVG
+const lastGoodDiagram = [];         // by position in the preview, for half-typed edits
+
+/* Mermaid draws a large error graphic of its own and leaves scratch nodes
+   behind. Neither belongs in a live preview that re-renders on every
+   keystroke, so the source is validated first and any leftovers removed. */
+function sweepMermaidLeftovers(){
+  document.querySelectorAll("[id^='dmmd-']").forEach(el => el.remove());
+}
+function showIncomplete(block, index, live){
+  const previous = live ? lastGoodDiagram[index] : null;
+  if (previous){
+    block.innerHTML = previous;
+    block.classList.add("stale");
+    const el = block.querySelector("svg");
+    if (el){ el.style.maxWidth = "100%"; el.style.height = "auto"; }
+    const note = document.createElement("div");
+    note.className = "diagram-note";
+    note.textContent = "still editing — showing the last complete version";
+    block.appendChild(note);
+  } else {
+    block.classList.remove("stale");
+    block.innerHTML = '<div class="diagram-pending">Diagram not complete yet</div>';
+  }
+}
+
+async function renderDiagrams(root){
+  const blocks = [...root.querySelectorAll(".mermaid-block")].filter(b => b.querySelector(".mmd-src"));
+  if (!blocks.length) return;
+  const live = root === doc;
+  let mm;
+  try { mm = await loadMermaid(); }
+  catch(e){
+    blocks.forEach(b => { b.innerHTML = '<div class="render-error">Mermaid is unavailable offline until it has been cached once.</div>'; });
+    return;
+  }
+  for (let i = 0; i < blocks.length; i++){
+    const b = blocks[i];
+    const src = b.querySelector(".mmd-src").textContent;
+
+    const cached = diagramCache.get(src);
+    if (cached){
+      b.classList.remove("stale");
+      b.innerHTML = cached;
+      const el = b.querySelector("svg");
+      if (el){ el.style.maxWidth = "100%"; el.style.height = "auto"; }
+      if (live) lastGoodDiagram[i] = cached;
+      continue;
+    }
+
+    // parse first: this reports a bad diagram without drawing anything
+    let valid = false;
+    try { valid = await mm.parse(src, {suppressErrors:true}); }
+    catch(err){ valid = false; }
+    if (!valid){
+      sweepMermaidLeftovers();
+      showIncomplete(b, i, live);
+      continue;
+    }
+
+    try{
+      const { svg } = await mm.render("mmd-" + (++mermaidSeq), src);
+      b.classList.remove("stale");
+      b.innerHTML = svg;
+      const el = b.querySelector("svg");
+      if (el){ el.style.maxWidth = "100%"; el.style.height = "auto"; }
+      diagramCache.set(src, svg);
+      if (diagramCache.size > 40) diagramCache.delete(diagramCache.keys().next().value);
+      if (live) lastGoodDiagram[i] = svg;
+    }catch(err){
+      sweepMermaidLeftovers();
+      showIncomplete(b, i, live);
+    }
+  }
+  if (live) lastGoodDiagram.length = blocks.length;
+  sweepMermaidLeftovers();
+}
+
+/* ---- copy buttons on code blocks (preview only, never exported) ---- */
+function addCopyButtons(root){
+  root.querySelectorAll("pre").forEach(pre => {
+    if (pre.classList.contains("mmd-src")) return;
+    if (pre.parentElement && pre.parentElement.classList.contains("code-wrap")) return;
+    const wrap = document.createElement("div");
+    wrap.className = "code-wrap";
+    pre.parentNode.insertBefore(wrap, pre);
+    wrap.appendChild(pre);
+    const btn = document.createElement("button");
+    btn.className = "copy-btn";
+    btn.type = "button";
+    btn.setAttribute("aria-label", "Copy code");
+    btn.innerHTML = copyIcon() + "<span>Copy</span>";
+    btn.addEventListener("click", async () => {
+      const text = pre.innerText;
+      let ok = true;
+      try{
+        if (navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(text);
+        else ok = legacyCopy(text);
+      }catch(e){ ok = legacyCopy(text); }
+      btn.classList.toggle("done", ok);
+      btn.querySelector("span").textContent = ok ? "Copied" : "Press Ctrl+C";
+      setTimeout(() => {
+        btn.classList.remove("done");
+        btn.querySelector("span").textContent = "Copy";
+      }, 1600);
+    });
+    wrap.appendChild(btn);
+  });
+}
+function copyIcon(){
+  return '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">'
+    + '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>';
+}
+function legacyCopy(text){
+  const ta = document.createElement("textarea");
+  ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+  document.body.appendChild(ta); ta.select();
+  let ok = false;
+  try{ ok = document.execCommand("copy"); }catch(e){ ok = false; }
+  ta.remove();
+  return ok;
+}
+
+/* =================================================================
+   4. State, rendering loop, autosave
+   ================================================================= */
+const source = document.getElementById("source");
+const doc = document.getElementById("doc");
+const previewWrap = document.getElementById("previewWrap");
+const filenameEl = document.getElementById("filename");
+const statusEl = document.getElementById("status");
+const countsEl = document.getElementById("counts");
+
+let fileHandle = null;              // File System Access handle, when available
+let filename = "untitled.md";
+let dirty = false;
+let isStarter = false;              // true while the example document is untouched
+
+function setStatus(msg, ms){
+  statusEl.textContent = msg;
+  statusEl.style.opacity = "1";
+  if (ms) setTimeout(() => { statusEl.style.opacity = "0"; }, ms);
+}
+function updateTitle(){
+  const label = escapeHtml(filename) + (dirty ? ' <b>•</b>' : "");
+  filenameEl.innerHTML = label;
+  document.getElementById("filenameFoot").innerHTML = label;
+}
+function markDirty(){ isStarter = false; if(!dirty){ dirty = true; updateTitle(); } }
+
+let renderTimer = null;
+function scheduleRender(){
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(render, 180);
+}
+function render(){
+  const md = source.value;
+  doc.innerHTML = markdownToHtml(fullMarkdown());
+  addCopyButtons(doc);
+  renderDiagrams(doc);
+  const words = (md.trim().match(/[^\s]+/g) || []).length;
+  countsEl.textContent = words + (words === 1 ? " word" : " words") + " · " + md.length + " characters";
+  autosave();
+}
+let autosaveTimer = null;
+let autosaveWarned = false;
+function autosave(){
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(() => {
+    try{
+      localStorage.setItem(STORE_KEY, JSON.stringify({
+        filename, text:source.value, images:[...images], at:Date.now()
+      }));
+    }catch(e){
+      // usually the storage quota, which large images reach quickly
+      if (!autosaveWarned){
+        autosaveWarned = true;
+        setStatus("Too large to keep a local draft — save to a file", 6000);
+      }
+    }
+  }, 700);
+}
+source.addEventListener("input", () => { markDirty(); scheduleRender(); });
+
+/* ---- restore the last draft ---- */
+(function restore(){
+  const saved = readJSON(STORE_KEY);
+  if (saved && typeof saved.text === "string" && saved.text.length){
+    source.value = saved.text;
+    filename = saved.filename || "untitled.md";
+    if (Array.isArray(saved.images)) saved.images.forEach(([k, v]) => images.set(k, v));
+    updateImageCount();
+    setStatus("Recovered your last draft", 4000);
+  } else {
+    source.value = starterDocument();
+    isStarter = true;
+  }
+  updateTitle();
+  render();
+})();
+
+function starterDocument(){
+  return [
+    "# " + APP.NAME,
+    "",
+    APP.TAGLINE + ". Everything here runs offline.",
+    "",
+    "## What works",
+    "",
+    "- **Bold**, *italic*, `code`, [links](https://example.org)",
+    "- Tables, task lists, maths, diagrams",
+    "- Nested lists:",
+    "    - second level, indented by four spaces",
+    "        - third level",
+    "    - back to the second level",
+    "",
+    "Numbered lists behave the same way:",
+    "",
+    "1. Build the geometry",
+    "2. Run the calculation",
+    "    1. optimise",
+    "    2. check the frequencies",
+    "3. Read the output",
+    "",
+    "> A quote is a line starting with a greater-than sign.",
+    "> It can run over several lines, and it can contain **emphasis**.",
+    "",
+    "### Tasks, tables, maths",
+    "",
+    "- [x] Write something",
+    "- [ ] Export it",
+    "",
+    "| Method | Scaling |",
+    "| --- | --- |",
+    "| HF | N⁴ |",
+    "| CCSD(T) | N⁷ |",
+    "",
+    "Inline maths, $E = mc^2$, and displayed maths:",
+    "",
+    "$$\\hat{H}\\,\\Psi = E\\,\\Psi$$",
+    "",
+    "```python",
+    "for cycle in range(maxiter):",
+    "    energy = scf_step(density)",
+    "```",
+    "",
+    "```mermaid",
+    "graph LR",
+    "  A[Markdown] --> B{Export}",
+    "  B --> C[.md]",
+    "  B --> D[.pdf]",
+    "  B --> E[.html]",
+    "```",
+    "",
+    "Start a new document to clear all of this away.",
+    ""
+  ].join("\n");
+}
+
+/* ---- the image library ------------------------------------------
+   Pictures are NOT kept in the editable text: the source only ever
+   shows a short reference such as ![photo][img-1]. The data URI is
+   held here and is written back into the file on save, so a saved
+   .md is still self-contained and portable.
+   ------------------------------------------------------------------ */
+function imageIsUsed(label){ return source.value.includes("[" + label + "]"); }
+function usedImages(){ return [...images.keys()].filter(imageIsUsed); }
+
+/* the text as it will be written to a file: references plus definitions */
+function fullMarkdown(){
+  const defs = usedImages().map(l => "[" + l + "]: " + images.get(l));
+  if (!defs.length) return source.value;
+  return source.value.replace(/\s*$/, "") + "\n\n" + defs.join("\n") + "\n";
+}
+
+/* pull any embedded definitions out of a file being opened */
+function extractImages(text){
+  images.clear();
+  const cleaned = text.replace(/^\[(img-\d+)\]:[ \t]*(data:[^\s]+)[ \t]*$/gm, (m, label, uri) => {
+    images.set(label, uri);
+    return "\u0000";
+  }).replace(/\n*\u0000/g, "").replace(/\s+$/, "\n");
+  return cleaned;
+}
+
+function nextImageLabel(){
+  let n = 0;
+  images.forEach((v, k) => { n = Math.max(n, parseInt(k.slice(4), 10)); });
+  const re = /\[img-(\d+)\]/g;
+  let m;
+  while ((m = re.exec(source.value))) n = Math.max(n, parseInt(m[1], 10));
+  return "img-" + (n + 1);
+}
+
+function updateImageCount(){
+  const btn = document.getElementById("btnImages");
+  const n = images.size;
+  btn.hidden = n === 0;
+  btn.textContent = n + (n === 1 ? " image" : " images");
+  btn.title = "Manage embedded images";
+}
+
+function addImageFile(f){
+  if (!f) return;
+  if (!/^image\//.test(f.type)){ setStatus("That file is not an image", 4000); return; }
+  const reader = new FileReader();
+  reader.onerror = () => setStatus("Could not read that image", 4000);
+  reader.onload = () => {
+    const label = nextImageLabel();
+    images.set(label, reader.result);
+    const alt = f.name.replace(/\.[^.]+$/, "");
+    replaceSelection("![" + alt + "][" + label + "]");
+    updateImageCount();
+    setStatus("Embedded " + f.name + " as " + label, 3500);
+  };
+  reader.readAsDataURL(f);
+}
+
+function openImagesDialog(){
+  const list = document.getElementById("imagesList");
+  const intro = document.getElementById("imagesIntro");
+  list.innerHTML = "";
+  if (!images.size){
+    intro.textContent = "No images yet. Anything you add is stored outside the text and "
+      + "written into the file when you save.";
+  } else {
+    intro.textContent = "Images live outside the editable text. Their reference stays in the "
+      + "document; the picture itself is written into the file when you save.";
+  }
+  images.forEach((uri, label) => {
+    const used = imageIsUsed(label);
+    const bytes = uri.length * 0.75;
+    const kb = bytes < 10240 ? (bytes/1024).toFixed(1) : Math.round(bytes/1024);
+    const row = document.createElement("div");
+    row.className = "img-row";
+    row.innerHTML =
+      '<img alt="" src="' + uri + '">' +
+      '<div class="img-meta"><code>[' + label + ']</code>' +
+      '<div class="sub">' + kb + ' kB · ' + (used ? "used in the document" : "not referenced") + '</div></div>';
+    const insert = document.createElement("button");
+    insert.className = "btn outlined";
+    insert.textContent = "Insert";
+    insert.onclick = () => {
+      document.getElementById("imagesDlg").close();
+      replaceSelection("![image][" + label + "]");
+    };
+    const del = document.createElement("button");
+    del.className = "btn outlined";
+    del.textContent = "Remove";
+    del.onclick = () => {
+      if (used && !confirm("The document still refers to " + label + ". Remove it anyway?")) return;
+      images.delete(label);
+      updateImageCount();
+      render();
+      openImagesDialog();
+    };
+    row.append(insert, del);
+    list.appendChild(row);
+  });
+  document.getElementById("imagesDlg").showModal();
+}
+
+/* =================================================================
+   5. Editing helpers (the toolbar edits the Markdown source)
+   ================================================================= */
+function replaceSelection(text, selStart, selEnd){
+  source.focus();
+  const s = source.selectionStart, e = source.selectionEnd;
+  let ok = false;
+  try { ok = document.execCommand("insertText", false, text); } catch(err){ ok = false; }
+  if (!ok) source.setRangeText(text, s, e, "end");
+  if (selStart !== undefined){
+    source.selectionStart = s + selStart;
+    source.selectionEnd = s + (selEnd === undefined ? selStart : selEnd);
+  }
+  markDirty();
+  scheduleRender();
+}
+function wrap(before, after){
+  const s = source.selectionStart, e = source.selectionEnd;
+  const sel = source.value.slice(s, e);
+  if (sel) replaceSelection(before + sel + after, before.length, before.length + sel.length);
+  else replaceSelection(before + after, before.length);
+}
+function eachSelectedLine(fn){
+  const v = source.value;
+  let s = v.lastIndexOf("\n", source.selectionStart - 1) + 1;
+  let e = source.selectionEnd;
+  if (v[e - 1] === "\n") e--;
+  const end = v.indexOf("\n", e) === -1 ? v.length : v.indexOf("\n", e);
+  const block = v.slice(s, end);
+  const out = block.split("\n").map(fn).join("\n");
+  source.selectionStart = s; source.selectionEnd = end;
+  replaceSelection(out, 0, out.length);
+}
+function atLineStart(prefix){
+  eachSelectedLine(line => line.startsWith(prefix) ? line.slice(prefix.length) : prefix + line);
+}
+
+/* line shapes, shared by the toolbar and by Enter/Tab handling */
+const RE = {
+  task:   /^(\s*)([-*+])(\s+)\[([ xX])\](\s+)(.*)$/,
+  ul:     /^(\s*)([-*+])(\s+)(.*)$/,
+  ol:     /^(\s*)(\d+)([.)])(\s+)(.*)$/,
+  quote:  /^(\s*)(>+)(\s?)(.*)$/,
+  row:    /^\s*\|.*\|\s*$/,
+  head:   /^(#{1,6})(\s+)(.*)$/,
+  indent: /^(\s*)/
+};
+
+const actions = {
+  /* none -> # -> ## -> ### -> none */
+  h(){
+    eachSelectedLine(line => {
+      const m = RE.head.exec(line);
+      if (!m) return "# " + line;
+      if (m[1].length >= 3) return m[3];
+      return "#" + line;
+    });
+  },
+  bold(){ wrap("**","**"); },
+  italic(){ wrap("*","*"); },
+  strike(){ wrap("~~","~~"); },
+  code(){ wrap("`","`"); },
+  ul(){ atLineStart("- "); },
+  ol(){ let n = 0; eachSelectedLine(l => RE.ol.test(l) ? l.replace(/^(\s*)\d+[.)]\s+/, "$1") : (++n) + ". " + l); },
+  task(){ atLineStart("- [ ] "); },
+  quote(){ atLineStart("> "); },
+  indent(){ eachSelectedLine(l => "    " + l); },
+  outdent(){ eachSelectedLine(l => l.replace(/^ {1,4}/, "")); },
+  link(){
+    const sel = source.value.slice(source.selectionStart, source.selectionEnd);
+    if (sel) replaceSelection("[" + sel + "](url)", sel.length + 3, sel.length + 6);
+    else replaceSelection("[text](url)", 1, 5);
+  },
+  image(){ document.getElementById("imagePicker").click(); },
+  table(){ replaceSelection("\n| Column | Column |\n| --- | --- |\n| value | value |\n\n", 3, 9); },
+  fence(){
+    const sel = source.value.slice(source.selectionStart, source.selectionEnd);
+    replaceSelection("\n```\n" + sel + "\n```\n", 4, 4);
+  },
+  math(){
+    const sel = source.value.slice(source.selectionStart, source.selectionEnd);
+    if (sel) wrap("$","$");
+    else replaceSelection("$$\n\n$$\n", 3, 3);
+  },
+  mermaid(){ replaceSelection("\n```mermaid\ngraph TD\n  A[Start] --> B[End]\n```\n", 12, 19); },
+  rule(){ replaceSelection("\n---\n"); }
+};
+function editorVisible(){
+  return document.querySelector(".pane.editor").offsetParent !== null;
+}
+document.getElementById("rail").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-act]");
+  if (!editorVisible()) return;
+  if (b && actions[b.dataset.act]) actions[b.dataset.act]();
+});
+
+document.getElementById("imagePicker").addEventListener("change", ev => {
+  const f = ev.target.files[0];
+  ev.target.value = "";
+  addImageFile(f);
+});
+document.getElementById("btnImages").onclick = openImagesDialog;
+document.getElementById("imagesClose").onclick = () => document.getElementById("imagesDlg").close();
+document.getElementById("imagesAdd").onclick = () => {
+  document.getElementById("imagesDlg").close();
+  document.getElementById("imagePicker").click();
+};
+
+/* ---- keyboard ---- */
+document.addEventListener("keydown", ev => {
+  const mod = ev.metaKey || ev.ctrlKey;
+  if (!mod) return;
+  const k = ev.key.toLowerCase();
+  const canEdit = editorVisible();
+  if (k === "s"){ ev.preventDefault(); saveMarkdown(false); }
+  else if (k === "b" && canEdit){ ev.preventDefault(); actions.bold(); }
+  else if (k === "i" && canEdit){ ev.preventDefault(); actions.italic(); }
+  else if (k === "k" && canEdit){ ev.preventDefault(); actions.link(); }
+  else if (k === "o"){ ev.preventDefault(); openFile(); }
+  else if (k === "p"){ ev.preventDefault(); window.print(); }
+});
+
+/* ---- Enter and Tab inside the editor ----
+   Lists, quotes and table rows continue themselves; inside a fenced
+   code block the indentation of the previous line is carried over. */
+function currentLine(){
+  const v = source.value, c = source.selectionStart;
+  const start = v.lastIndexOf("\n", c - 1) + 1;
+  let end = v.indexOf("\n", c);
+  if (end === -1) end = v.length;
+  return {start, end, text:v.slice(start, end), beforeCaret:v.slice(start, c)};
+}
+function insideFence(){
+  const upto = source.value.slice(0, source.selectionStart);
+  return ((upto.match(/^\s*```/gm) || []).length % 2) === 1;
+}
+function collapseToLineEnd(){
+  // indenting selects the whole line; put the caret back at its end
+  source.selectionStart = source.selectionEnd;
+}
+function clearCurrentLine(line){
+  source.selectionStart = line.start;
+  source.selectionEnd = line.end;
+  replaceSelection("");
+}
+source.addEventListener("keydown", ev => {
+  if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+
+  if (ev.key === "Tab"){
+    ev.preventDefault();
+    const line = currentLine();
+    const multi = source.selectionStart !== source.selectionEnd;
+    if (ev.shiftKey){
+      actions.outdent();
+      if (!multi) collapseToLineEnd();
+      return;
+    }
+    if (multi || RE.task.test(line.text) || RE.ul.test(line.text) || RE.ol.test(line.text)){
+      actions.indent();
+      if (!multi) collapseToLineEnd();
+    } else {
+      replaceSelection("  ");
+    }
+    return;
+  }
+
+  if (ev.key !== "Enter" || ev.shiftKey) return;
+  const line = currentLine();
+  const before = line.beforeCaret;
+
+  if (insideFence()){
+    const ind = RE.indent.exec(before)[1];
+    if (ind){ ev.preventDefault(); replaceSelection("\n" + ind); }
+    return;
+  }
+
+  let m;
+  if ((m = RE.task.exec(before))){
+    ev.preventDefault();
+    if (!m[6].trim()){ clearCurrentLine(line); return; }
+    replaceSelection("\n" + m[1] + m[2] + m[3] + "[ ]" + m[5]);
+    return;
+  }
+  if ((m = RE.ul.exec(before))){
+    ev.preventDefault();
+    if (!m[4].trim()){ clearCurrentLine(line); return; }
+    replaceSelection("\n" + m[1] + m[2] + m[3]);
+    return;
+  }
+  if ((m = RE.ol.exec(before))){
+    ev.preventDefault();
+    if (!m[5].trim()){ clearCurrentLine(line); return; }
+    replaceSelection("\n" + m[1] + (parseInt(m[2], 10) + 1) + m[3] + m[4]);
+    return;
+  }
+  if ((m = RE.quote.exec(before))){
+    ev.preventDefault();
+    if (!m[4].trim()){ clearCurrentLine(line); return; }
+    replaceSelection("\n" + m[1] + m[2] + (m[3] || " "));
+    return;
+  }
+  if (RE.row.test(line.text)){
+    ev.preventDefault();
+    const cells = line.text.trim().split("|").length - 2;   // pipes minus the two ends
+    if (cells > 0){
+      const empty = "|" + "   |".repeat(cells);
+      // an empty row means the table is finished
+      if (/^\|[\s|]*\|$/.test(line.text.trim())){ clearCurrentLine(line); return; }
+      replaceSelection("\n" + empty, 2);
+    } else {
+      replaceSelection("\n");
+    }
+    return;
+  }
+});
+
+/* =================================================================
+   6. Opening and saving files
+   ================================================================= */
+const supportsFS = "showSaveFilePicker" in window;
+const mdTypes = [{description:"Markdown", accept:{"text/markdown":[".md",".markdown",".mdown"]}}];
+
+function confirmDiscard(){
+  if (!dirty || isStarter) return true;
+  return confirm("Discard unsaved changes to " + filename + "?");
+}
+async function openFile(){
+  if (!confirmDiscard()) return;
+  if (supportsFS){
+    try{
+      const [h] = await window.showOpenFilePicker({types:mdTypes, excludeAcceptAllOption:false});
+      const file = await h.getFile();
+      loadText(await file.text(), file.name);
+      fileHandle = h;
+    }catch(err){ if (err.name !== "AbortError") setStatus("Could not open that file", 4000); }
+  } else {
+    document.getElementById("filePicker").click();
+  }
+}
+document.getElementById("filePicker").addEventListener("change", async ev => {
+  const f = ev.target.files[0];
+  if (!f) return;
+  loadText(await f.text(), f.name);
+  fileHandle = null;
+  ev.target.value = "";
+});
+function loadText(text, name){
+  source.value = extractImages(text);
+  updateImageCount();
+  filename = name || "untitled.md";
+  dirty = false; isStarter = false;
+  updateTitle();
+  render();
+  setStatus("Opened " + filename, 3000);
+}
+function newDocument(){
+  if (!confirmDiscard()) return;
+  images.clear();
+  updateImageCount();
+  source.value = "";
+  filename = "untitled.md";
+  fileHandle = null;
+  dirty = false; isStarter = false;
+  updateTitle();
+  render();
+  source.focus();
+  setStatus("New document", 2000);
+}
+
+function download(blob, name){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+function askName(suggested){
+  return new Promise(resolve => {
+    const dlg = document.getElementById("nameDlg");
+    const input = document.getElementById("nameInput");
+    input.value = suggested;
+    dlg.showModal();
+    const dot = suggested.lastIndexOf(".");
+    setTimeout(() => { input.focus(); input.setSelectionRange(0, dot > 0 ? dot : suggested.length); }, 30);
+    const ok = () => { dlg.close(); resolve(input.value.trim() || suggested); };
+    const cancel = () => { dlg.close(); resolve(null); };
+    document.getElementById("nameOk").onclick = ok;
+    document.getElementById("nameCancel").onclick = cancel;
+    input.onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); ok(); } };
+  });
+}
+
+async function saveMarkdown(forceNew){
+  const blob = new Blob([fullMarkdown()], {type:"text/markdown;charset=utf-8"});
+  if (supportsFS){
+    try{
+      if (forceNew || !fileHandle){
+        fileHandle = await window.showSaveFilePicker({suggestedName:filename, types:mdTypes});
+      }
+      const w = await fileHandle.createWritable();
+      await w.write(blob); await w.close();
+      filename = fileHandle.name;
+      dirty = false; isStarter = false; updateTitle();
+      setStatus("Saved", 2500);
+    }catch(err){ if (err.name !== "AbortError") setStatus("Save failed: " + err.message, 5000); }
+  } else {
+    const name = await askName(filename);
+    if (!name) return;
+    filename = /\.(md|markdown|mdown|txt)$/i.test(name) ? name : name + ".md";
+    download(blob, filename);
+    dirty = false; isStarter = false; updateTitle();
+    setStatus("Downloaded " + filename, 3000);
+  }
+}
+
+/* ---- self-contained HTML export ----
+   Maths is re-rendered as MathML so the file needs no fonts or
+   stylesheets from anywhere; diagrams are already inline SVG.      */
+async function exportHtml(){
+  const base = filename.replace(/\.(md|markdown|mdown|txt)$/i, "") || "document";
+  const name = await askName(base + ".html");
+  if (!name) return;
+
+  mathOutput = "mathml";
+  const body = document.createElement("div");
+  body.className = "doc";
+  body.innerHTML = markdownToHtml(fullMarkdown());
+  await renderDiagrams(body);
+  mathOutput = "htmlAndMathml";
+
+  const hljsCss = (window.HLJS_CSS && window.HLJS_CSS.light) || "";
+  const html = [
+'<!DOCTYPE html>',
+'<html lang="en"><head><meta charset="utf-8">',
+'<meta name="viewport" content="width=device-width, initial-scale=1">',
+'<meta name="generator" content="' + escapeHtml(APP.NAME + " " + APP.VERSION) + '">',
+'<title>' + escapeHtml(base) + '</title>',
+'<style>', hljsCss, exportStyles(), '</style></head><body><article class="doc">',
+body.innerHTML,
+'</article></body></html>'
+  ].join("\n");
+
+  download(new Blob([html], {type:"text/html;charset=utf-8"}), /\.html?$/i.test(name) ? name : name + ".html");
+  setStatus("Exported " + name, 3000);
+}
+function exportStyles(){
+  return `
+:root{--ink:#23262B;--soft:#63676F;--rule:#DDD8CD;--chalk:#AE4630;--azurite:#2E5A87;--chrome:#F1EEE7}
+body{margin:0;background:#F1EEE7}
+.doc{max-width:44em;margin:2rem auto;background:#FCFBF8;padding:2.6rem 2.8rem;
+  border:1px solid var(--rule);color:var(--ink);line-height:1.62;font-size:17px;
+  font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif}
+.doc h1,.doc h2,.doc h3,.doc h4{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  line-height:1.25;margin:1.8em 0 .5em;font-weight:600}
+.doc h1{font-size:1.72em;margin-top:0}
+.doc h2{font-size:1.32em;border-bottom:1px solid var(--rule);padding-bottom:.18em}
+.doc h3{font-size:1.1em}.doc h4{font-size:1em;color:var(--soft)}
+.doc p{margin:0 0 1em}
+.doc a{color:var(--azurite)}
+.doc blockquote{margin:1.2em 0;padding-left:1.1em;border-left:2px solid var(--chalk);color:var(--soft);font-style:italic}
+.doc code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.86em;background:rgba(35,38,43,.06);padding:.12em .32em;border-radius:3px}
+.doc pre{background:var(--chrome);border:1px solid var(--rule);border-radius:5px;padding:.85em 1em;overflow:auto;margin:0 0 1.2em}
+.doc pre code{background:none;padding:0;font-size:.82em}
+.doc ul,.doc ol{padding-left:1.4em;margin:0 0 1em}
+.doc li>ul,.doc li>ol{margin:.25em 0}
+.doc table{border-collapse:collapse;width:100%;margin:0 0 1.3em;font-size:.94em;
+  font-family:system-ui,-apple-system,sans-serif}
+.doc th,.doc td{border:1px solid var(--rule);padding:.4em .6em;text-align:left}
+.doc th{background:var(--chrome)}
+.doc hr{border:0;border-top:1px solid var(--rule);margin:2em 0}
+.doc img,.doc svg{max-width:100%;height:auto}
+.doc .mermaid-block{margin:0 0 1.3em;text-align:center}
+.doc ul:has(>li>input[type=checkbox]){list-style:none;padding-left:.3em}
+math{font-size:1.05em}
+@media print{body{background:#fff}.doc{border:0;margin:0;max-width:none;padding:0;font-size:11.5pt}
+@page{size:A4;margin:20mm 18mm}}
+@media (max-width:700px){.doc{margin:0;padding:1.2rem;border:0}}
+`;
+}
+
+/* =================================================================
+   7. Chrome: buttons, save menu, tabs, divider, drag and drop
+   ================================================================= */
+const saveMenu = document.getElementById("saveMenu");
+const btnSave = document.getElementById("btnSave");
+function toggleSaveMenu(show){
+  const open = show === undefined ? saveMenu.hidden : show;
+  saveMenu.hidden = !open;
+  btnSave.setAttribute("aria-expanded", String(open));
+}
+btnSave.onclick = e => { e.stopPropagation(); toggleSaveMenu(); };
+document.addEventListener("click", e => { if (!saveMenu.contains(e.target)) toggleSaveMenu(false); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") toggleSaveMenu(false); });
+
+document.getElementById("saveMd").onclick    = () => { toggleSaveMenu(false); saveMarkdown(false); };
+document.getElementById("saveMdAs").onclick  = () => { toggleSaveMenu(false); saveMarkdown(true); };
+document.getElementById("saveHtml").onclick  = () => { toggleSaveMenu(false); exportHtml(); };
+document.getElementById("savePdf").onclick   = () => { toggleSaveMenu(false); setTimeout(() => window.print(), 120); };
+
+document.getElementById("btnOpen").onclick = openFile;
+document.getElementById("btnNew").onclick = newDocument;
+document.getElementById("btnTheme").onclick = () => {
+  prefs.theme = prefs.theme === "dark" ? "light" : "dark";
+  applyTheme(); savePrefs();
+  if (window.mermaid) initMermaid();           // same library, new theme
+  diagramCache.clear();
+  lastGoodDiagram.length = 0;
+  render();
+};
+document.getElementById("btnAbout").onclick = () => {
+  document.getElementById("aboutBody").innerHTML =
+    "<h2>" + escapeHtml(APP.NAME) + " " + escapeHtml(APP.VERSION) + "</h2>" +
+    "<p>" + escapeHtml(APP.TAGLINE) + ". Built for " + escapeHtml(APP.AUTHOR) + ".</p>" +
+    "<p>Runs entirely in the browser. Nothing is uploaded; your text stays on the device " +
+    "and is kept in local storage between visits.</p>" +
+    "<p><b>Shortcuts</b></p><ul>" +
+    "<li><kbd>Ctrl/Cmd</kbd>+<kbd>S</kbd> save · <kbd>O</kbd> open · <kbd>P</kbd> print</li>" +
+    "<li><kbd>Ctrl/Cmd</kbd>+<kbd>B</kbd> bold · <kbd>I</kbd> italic · <kbd>K</kbd> link</li>" +
+    "<li><kbd>Tab</kbd> indents a list item, <kbd>Shift</kbd>+<kbd>Tab</kbd> outdents it</li>" +
+    "<li><kbd>Enter</kbd> continues a list, quote or table row; on an empty one it stops</li></ul>" +
+    "<p>Images are kept outside the editable text — the document holds only a short " +
+    "reference, and the picture is written into the file when you save. The image count " +
+    "in the status bar opens the list.</p>" +
+    "<p style='color:var(--ink-soft);font-size:.82rem'>Markdown by marked, maths by KaTeX, " +
+    "diagrams by Mermaid, highlighting by highlight.js, sanitising by DOMPurify.</p>";
+  document.getElementById("aboutDlg").showModal();
+};
+document.getElementById("aboutClose").onclick = () => document.getElementById("aboutDlg").close();
+
+/* ---- narrow-screen tabs ---- */
+function setView(v){
+  prefs.view = v; savePrefs();
+  document.body.dataset.view = v;
+  document.getElementById("tabWrite").setAttribute("aria-selected", String(v === "write"));
+  document.getElementById("tabRead").setAttribute("aria-selected", String(v === "read"));
+}
+document.getElementById("tabWrite").onclick = () => setView("write");
+document.getElementById("tabRead").onclick = () => { setView("read"); render(); };
+setView(prefs.view);
+
+/* ---- draggable divider ---- */
+const divider = document.getElementById("divider");
+const editorPane = document.querySelector(".pane.editor");
+const previewPane = document.querySelector(".pane.preview");
+function applySplit(){
+  editorPane.style.flex = "0 0 " + prefs.split + "%";
+  previewPane.style.flex = "1 1 auto";
+}
+applySplit();
+divider.addEventListener("pointerdown", ev => {
+  divider.setPointerCapture(ev.pointerId);
+  const rect = document.querySelector("main").getBoundingClientRect();
+  const move = e => {
+    const pct = ((e.clientX - rect.left) / rect.width) * 100;
+    prefs.split = Math.min(80, Math.max(20, pct));
+    applySplit();
+  };
+  const up = () => {
+    divider.releasePointerCapture(ev.pointerId);
+    divider.removeEventListener("pointermove", move);
+    divider.removeEventListener("pointerup", up);
+    savePrefs();
+  };
+  divider.addEventListener("pointermove", move);
+  divider.addEventListener("pointerup", up);
+});
+divider.addEventListener("dblclick", () => { prefs.split = 50; applySplit(); savePrefs(); });
+
+/* ---- scroll sync, editor leads ---- */
+let syncing = false;
+source.addEventListener("scroll", () => {
+  if (syncing) return;
+  syncing = true;
+  const a = source.scrollHeight - source.clientHeight;
+  const b = previewWrap.scrollHeight - previewWrap.clientHeight;
+  if (a > 0 && b > 0) previewWrap.scrollTop = (source.scrollTop / a) * b;
+  requestAnimationFrame(() => { syncing = false; });
+});
+
+/* ---- drag and drop a file onto the window ---- */
+["dragover","drop"].forEach(t => document.addEventListener(t, e => e.preventDefault()));
+document.addEventListener("drop", async e => {
+  const f = e.dataTransfer.files[0];
+  if (!f) return;
+  if (/^image\//.test(f.type)){ addImageFile(f); return; }
+  if (!confirmDiscard()) return;
+  loadText(await f.text(), f.name);
+  fileHandle = null;
+});
+
+/* ---- don't lose work on close ---- */
+window.addEventListener("beforeunload", e => {
+  if (dirty && !isStarter){ e.preventDefault(); e.returnValue = ""; }
+});
+
+/* ---- opening a file the operating system handed to the app ---- */
+if ("launchQueue" in window && "files" in LaunchParams.prototype){
+  launchQueue.setConsumer(async params => {
+    if (!params.files || !params.files.length) return;
+    const h = params.files[0];
+    const file = await h.getFile();
+    loadText(await file.text(), file.name);
+    fileHandle = h;
+  });
+}
+
+/* =================================================================
+   8. Service worker
+   ================================================================= */
+if ("serviceWorker" in navigator){
+  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+}
+</script>
+</body>
+</html>
