@@ -102,6 +102,9 @@ ink and the rest in red chalk; otherwise it is shown plain.
   Inside a fenced code block, indentation carries over. `Tab` / `Shift+Tab`
   indent and outdent list items.
 - Hovering a code block in the preview shows a copy button.
+- Find and replace: the magnifier at the end of the toolbar, or `Ctrl/Cmd+F`.
+  `Ctrl/Cmd+G` steps to the next match (add `Shift` for the previous one),
+  `Aa` toggles case sensitivity, `Esc` closes. "All" counts as a single undo.
 - A Mermaid diagram is validated before it is drawn, so a half-typed one shows
   the last complete version dimmed instead of Mermaid's own error graphic.
   Rendered diagrams are cached, so re-rendering while you type is cheap.
