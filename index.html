@@ -716,6 +716,77 @@ function legacyCopy(text){
   return ok;
 }
 
+/* ---- reverse sync ------------------------------------------------
+   Each top-level block in the preview records where in the source it
+   came from, so a double-click there can scroll the editor to it.
+   ------------------------------------------------------------------ */
+function mapSourceOffsets(root, md){
+  let tokens;
+  try { tokens = marked.lexer(md); }
+  catch(err){ return; }
+  const blocks = [...root.children];
+  let offset = 0, i = 0;
+  for (const t of tokens){
+    // 'space' and 'def' (link and image definitions) render nothing
+    if (t.type !== "space" && t.type !== "def" && i < blocks.length){
+      blocks[i].dataset.srcOffset = offset;
+      i++;
+    }
+    offset += (t.raw || "").length;
+  }
+}
+
+/* the word under the pointer, which is steadier than reading the
+   selection: a double-click event can arrive before the browser has
+   finished selecting anything */
+function wordAtPoint(x, y){
+  let node = null, offset = 0;
+  if (document.caretRangeFromPoint){
+    const r = document.caretRangeFromPoint(x, y);
+    if (r){ node = r.startContainer; offset = r.startOffset; }
+  } else if (document.caretPositionFromPoint){
+    const cp = document.caretPositionFromPoint(x, y);
+    if (cp){ node = cp.offsetNode; offset = cp.offset; }
+  }
+  if (!node || node.nodeType !== 3) return "";
+  const text = node.textContent;
+  let a = offset, b = offset;
+  while (a > 0 && !/\s/.test(text[a - 1])) a--;
+  while (b < text.length && !/\s/.test(text[b])) b++;
+  return text.slice(a, b).trim();
+}
+
+function jumpToSource(target, x, y){
+  const block = target && target.closest ? target.closest("[data-src-offset]") : null;
+  if (!block) return;
+  let pos = parseInt(block.dataset.srcOffset, 10);
+  if (!Number.isFinite(pos)) return;
+
+  const next = block.nextElementSibling;
+  const limit = next && next.dataset.srcOffset
+    ? parseInt(next.dataset.srcOffset, 10) : source.value.length;
+
+  // narrow down inside the block: the word under the pointer first, then
+  // the selection, then progressively plainer versions of the word
+  const selected = (window.getSelection ? String(window.getSelection()) : "").trim();
+  const tries = [];
+  const word = (typeof x === "number") ? wordAtPoint(x, y) : "";
+  if (word) tries.push(word, word.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ""));
+  if (selected && !selected.includes("\n")) tries.push(selected);
+
+  let length = 0;
+  for (const t of tries){
+    if (!t || t.length < 2) continue;
+    const found = source.value.indexOf(t, pos);
+    if (found !== -1 && found < limit){ pos = found; length = t.length; break; }
+  }
+
+  if (!editorVisible()) setView("write");   // on a phone, bring the editor up
+  source.focus();
+  source.setSelectionRange(pos, Math.min(source.value.length, pos + length));
+  scrollToOffset(pos);
+}
+
 /* =================================================================
    4. State, rendering loop, autosave
    ================================================================= */
@@ -750,8 +821,10 @@ function scheduleRender(){
 }
 function render(){
   const md = source.value;
-  doc.innerHTML = markdownToHtml(fullMarkdown());
+  const full = fullMarkdown();
+  doc.innerHTML = markdownToHtml(full);
   addCopyButtons(doc);
+  mapSourceOffsets(doc, full);
   renderDiagrams(doc);
   const words = (md.trim().match(/[^\s]+/g) || []).length;
   countsEl.textContent = words + (words === 1 ? " word" : " words") + " · " + md.length + " characters";
@@ -1561,6 +1634,22 @@ source.addEventListener("scroll", () => {
   const b = previewWrap.scrollHeight - previewWrap.clientHeight;
   if (a > 0 && b > 0) previewWrap.scrollTop = (source.scrollTop / a) * b;
   requestAnimationFrame(() => { syncing = false; });
+});
+
+/* ---- double-click or double-tap the preview to find that spot ---- */
+previewWrap.addEventListener("dblclick", ev => jumpToSource(ev.target, ev.clientX, ev.clientY));
+
+let lastTapAt = 0, lastTapTarget = null;
+previewWrap.addEventListener("pointerup", ev => {
+  if (ev.pointerType !== "touch") return;
+  const now = Date.now();
+  if (now - lastTapAt < 400 && lastTapTarget === ev.target){
+    lastTapAt = 0;
+    jumpToSource(ev.target, ev.clientX, ev.clientY);
+  } else {
+    lastTapAt = now;
+    lastTapTarget = ev.target;
+  }
 });
 
 /* ---- drag and drop a file onto the window ---- */

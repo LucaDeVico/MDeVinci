@@ -10,7 +10,7 @@
 const APP_CONFIG = {
   NAME: "MDeVinci",              // placeholder — change at will
   TAGLINE: "Markdown, written and read",
-  VERSION: "0.2",
+  VERSION: "0.3",
   AUTHOR: "Luca De Vico"
 };
 
