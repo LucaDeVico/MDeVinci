@@ -782,9 +782,18 @@ function jumpToSource(target, x, y){
   }
 
   if (!editorVisible()) setView("write");   // on a phone, bring the editor up
-  source.focus();
+  source.focus({preventScroll:true});
   source.setSelectionRange(pos, Math.min(source.value.length, pos + length));
   scrollToOffset(pos);
+  recentreAfterKeyboard(pos);
+}
+
+function recentreAfterKeyboard(pos){
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const again = () => scrollToOffset(pos);
+  vv.addEventListener("resize", again, {once:true});
+  setTimeout(() => vv.removeEventListener("resize", again), 1200);
 }
 
 /* =================================================================
@@ -1174,12 +1183,51 @@ function updateFindCount(){
     ? matches.length + " found"
     : (matchIndex + 1) + " of " + matches.length;
 }
+/* ---- where a character actually sits in the editor --------------
+   The editor wraps long lines, so counting newlines says nothing about
+   pixel height: a long paragraph is one line in the file and many on
+   screen. A hidden copy of the textarea, same font, width and padding,
+   is filled with the text up to the offset; the height it reaches is
+   where the character is drawn.
+   ------------------------------------------------------------------ */
+let mirror = null;
+const MIRROR_PROPS = ["boxSizing","width","fontFamily","fontSize","fontWeight","fontStyle",
+  "lineHeight","letterSpacing","wordSpacing","textTransform","textIndent","tabSize",
+  "paddingTop","paddingRight","paddingBottom","paddingLeft",
+  "borderTopWidth","borderRightWidth","borderBottomWidth","borderLeftWidth"];
+function caretTop(pos){
+  if (!mirror){
+    mirror = document.createElement("div");
+    mirror.setAttribute("aria-hidden", "true");
+    Object.assign(mirror.style, {
+      position:"absolute", top:"0", left:"-9999px", visibility:"hidden",
+      whiteSpace:"pre-wrap", overflowWrap:"break-word", wordWrap:"break-word",
+      overflow:"hidden", borderStyle:"solid"
+    });
+    document.body.appendChild(mirror);
+  }
+  const cs = getComputedStyle(source);
+  MIRROR_PROPS.forEach(k => { mirror.style[k] = cs[k]; });
+  // clientWidth excludes the scrollbar, which is what the text wraps against
+  const borders = parseFloat(cs.borderLeftWidth) + parseFloat(cs.borderRightWidth);
+  mirror.style.width = (cs.boxSizing === "border-box"
+    ? source.clientWidth + borders
+    : source.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) + "px";
+  mirror.textContent = source.value.slice(0, pos);
+  const mark = document.createElement("span");
+  mark.textContent = "\u200b";
+  mirror.appendChild(mark);
+  return mark.offsetTop;
+}
+
+/* scroll the editor so pos sits a third of the way down. The preview is
+   left where it is: the editor-leads sync is paused for this one move. */
+let holdSync = false;
 function scrollToOffset(pos){
-  const style = getComputedStyle(source);
-  const lineHeight = parseFloat(style.lineHeight) || 18;
-  const line = source.value.slice(0, pos).split("\n").length - 1;
-  const target = line * lineHeight + (parseFloat(style.paddingTop) || 0) - source.clientHeight / 2;
-  source.scrollTop = Math.max(0, target);
+  const top = caretTop(pos);
+  holdSync = true;
+  source.scrollTop = Math.max(0, top - source.clientHeight / 3);
+  setTimeout(() => { holdSync = false; }, 120);
 }
 function gotoMatch(step){
   computeMatches();
@@ -1188,7 +1236,7 @@ function gotoMatch(step){
     ? (step < 0 ? matches.length - 1 : 0)
     : (matchIndex + step + matches.length) % matches.length;
   const start = matches[matchIndex];
-  source.focus();
+  source.focus({preventScroll:true});
   source.setSelectionRange(start, start + findInput.value.length);
   scrollToOffset(start);
   updateFindCount();
@@ -1628,7 +1676,7 @@ divider.addEventListener("dblclick", () => { prefs.split = 50; applySplit(); sav
 /* ---- scroll sync, editor leads ---- */
 let syncing = false;
 source.addEventListener("scroll", () => {
-  if (syncing) return;
+  if (syncing || holdSync) return;
   syncing = true;
   const a = source.scrollHeight - source.clientHeight;
   const b = previewWrap.scrollHeight - previewWrap.clientHeight;
