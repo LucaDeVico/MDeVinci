@@ -556,6 +556,9 @@ const MIRROR_PROPS = ["boxSizing","width","fontFamily","fontSize","fontWeight","
   "paddingTop","paddingRight","paddingBottom","paddingLeft",
   "borderTopWidth","borderRightWidth","borderBottomWidth","borderLeftWidth"];
 let holdSync = false;         // pauses editor-leads scroll sync for one move
+let syncing = false;          // true while the sync itself is moving the preview
+let syncMap = null;           // block positions in both panes; null = re-measure
+let syncQueued = false;
 
 function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -1066,7 +1069,9 @@ function render(){
   doc.innerHTML = markdownToHtml(full);
   addCopyButtons(doc);
   mapSourceOffsets(doc, full);
-  renderDiagrams(doc);
+  syncMap = null;
+  syncPreview();                       // an edit moves things: realign now
+  renderDiagrams(doc).then(() => { syncMap = null; queueSync(); });
   buildOutline();
   const words = (md.trim().match(/[^\s]+/g) || []).length;
   countsEl.textContent = words + (words === 1 ? " word" : " words") + " · " + md.length + " characters";
@@ -1927,16 +1932,89 @@ if ("ResizeObserver" in window){
 }
 if (prefs.outline && !matchMedia("(max-width:820px)").matches) setOutline(true);
 
-/* ---- scroll sync, editor leads ---- */
-let syncing = false;
-source.addEventListener("scroll", () => {
-  if (syncing || holdSync) return;
+/* ---- scroll sync, editor leads ------------------------------------
+   Anchored on blocks, not on proportions. Every top-level block in the
+   preview records where it starts in the source (mapSourceOffsets), and
+   the hidden mirror gives the height at which that same offset is drawn
+   in the editor. That yields pairs of heights, one pair per block. The
+   line at the top of the editor is located between two pairs, and the
+   preview is put at the same fraction of the way between them.
+
+   The map is thrown away and re-measured whenever either side can have
+   moved: after every render, when a diagram or an image finishes
+   loading, and when either pane changes size.
+   ------------------------------------------------------------------ */
+function buildSyncMap(){
+  if (!source.clientWidth || !previewWrap.clientWidth) return null;
+  const text = source.value;
+  const blocks = [...doc.children].filter(b => b.dataset.srcOffset !== undefined);
+  prepareMirror();
+  mirror.textContent = "";
+  const pairs = [];
+  let last = 0;
+  for (const b of blocks){
+    const off = parseInt(b.dataset.srcOffset, 10);
+    if (!(off >= last) || off > text.length) continue;   // image definitions sit past the text
+    mirror.appendChild(document.createTextNode(text.slice(last, off)));
+    const mark = document.createElement("span");
+    mark.textContent = "\u200b";
+    mirror.appendChild(mark);
+    pairs.push([mark, b]);
+    last = off;
+  }
+  const wrapTop = previewWrap.getBoundingClientRect().top - previewWrap.scrollTop;
+  const ed = [0], pv = [0];
+  for (const [mark, b] of pairs){
+    const e = mark.offsetTop;
+    const v = b.getBoundingClientRect().top - wrapTop;
+    if (e > ed[ed.length - 1] && v > pv[pv.length - 1]){ ed.push(e); pv.push(v); }
+  }
+  ed.push(Math.max(source.scrollHeight, ed[ed.length - 1] + 1));
+  pv.push(Math.max(previewWrap.scrollHeight, pv[pv.length - 1] + 1));
+  syncMap = {ed, pv, pad: parseFloat(getComputedStyle(source).paddingTop) || 0};
+  return syncMap;
+}
+
+function syncPreview(){
+  syncQueued = false;
+  if (holdSync) return;
+  const map = syncMap || buildSyncMap();
+  if (!map) return;
+  const {ed, pv, pad} = map;
+  const s = source.scrollTop;
+  const maxE = source.scrollHeight - source.clientHeight;
+  const maxP = previewWrap.scrollHeight - previewWrap.clientHeight;
+  let target;
+  if (s <= 0) target = 0;
+  else if (maxE > 0 && s >= maxE - 1) target = maxP;   // both ends line up exactly
+  else {
+    const y = s + pad;                                  // the line at the top of the editor
+    let lo = 0, hi = ed.length - 2;
+    while (lo < hi){ const mid = (lo + hi + 1) >> 1; if (ed[mid] <= y) lo = mid; else hi = mid - 1; }
+    const f = Math.min(1, Math.max(0, (y - ed[lo]) / (ed[lo + 1] - ed[lo])));
+    target = pv[lo] + f * (pv[lo + 1] - pv[lo]) - pad;
+  }
+  target = Math.max(0, Math.min(maxP, target));
+  if (Math.abs(previewWrap.scrollTop - target) < 1) return;
   syncing = true;
-  const a = source.scrollHeight - source.clientHeight;
-  const b = previewWrap.scrollHeight - previewWrap.clientHeight;
-  if (a > 0 && b > 0) previewWrap.scrollTop = (source.scrollTop / a) * b;
+  previewWrap.scrollTop = target;
   requestAnimationFrame(() => { syncing = false; });
-});
+}
+function queueSync(){
+  if (syncQueued) return;
+  syncQueued = true;
+  requestAnimationFrame(syncPreview);
+}
+
+source.addEventListener("scroll", () => { if (!holdSync) queueSync(); });
+doc.addEventListener("load", ev => {
+  if (ev.target.tagName === "IMG"){ syncMap = null; queueSync(); }
+}, true);
+if ("ResizeObserver" in window){
+  const ro = new ResizeObserver(() => { syncMap = null; queueSync(); });
+  ro.observe(source);
+  ro.observe(doc);
+}
 
 /* ---- double-click or double-tap the preview to find that spot ---- */
 previewWrap.addEventListener("dblclick", ev => jumpToSource(ev.target, ev.clientX, ev.clientY));

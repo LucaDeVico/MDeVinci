@@ -102,6 +102,13 @@ ink and the rest in red chalk; otherwise it is shown plain.
   Inside a fenced code block, indentation carries over. `Tab` / `Shift+Tab`
   indent and outdent list items.
 - Hovering a code block in the preview shows a copy button.
+- Scrolling the editor moves the preview to the same block, not to the same
+  percentage of the page. Each rendered block records where it starts in the
+  source, and the editor position of that point is measured, so long prose,
+  code, tables, diagrams and images all line up. The map is rebuilt after every
+  edit and whenever a diagram or image finishes drawing, so the panes stay
+  aligned after large insertions or deletions. Scrolling the preview does not
+  move the editor.
 - Double-click (or double-tap) anywhere in the preview and the editor scrolls to
   the matching place in the source and selects the word, the way Overleaf does.
   On a phone this also switches back to the Write tab.
