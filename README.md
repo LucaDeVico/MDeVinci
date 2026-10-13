@@ -105,6 +105,12 @@ ink and the rest in red chalk; otherwise it is shown plain.
 - Double-click (or double-tap) anywhere in the preview and the editor scrolls to
   the matching place in the source and selects the word, the way Overleaf does.
   On a phone this also switches back to the Write tab.
+- Outline: the list icon at the far left of the top bar, or `Ctrl/Cmd+Shift+O`.
+  It lists every heading, indented by level, and highlights the section you are
+  in as you scroll either pane. Clicking an entry brings that heading to the top
+  of both the editor and the preview. On a wide screen it docks to the left and
+  stays open between visits; on a phone it slides over the page and closes
+  after you pick a section. Headings inside code blocks are ignored.
 - Find and replace: the magnifier at the end of the toolbar, or `Ctrl/Cmd+F`.
   `Ctrl/Cmd+G` steps to the next match (add `Shift` for the previous one),
   `Aa` toggles case sensitivity, `Esc` closes. "All" counts as a single undo.

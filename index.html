@@ -149,7 +149,58 @@ html[data-theme="dark"] .rail button:hover{background:rgba(255,255,255,.10)}
 }
 
 /* ---------- panes ---------- */
-main{flex:1;display:flex;min-height:0;background:var(--chrome)}
+main{flex:1;display:flex;min-height:0;background:var(--chrome);position:relative}
+.split{flex:1;display:flex;min-width:0;min-height:0}
+
+/* ---------- outline ---------- */
+.outline{
+  flex:none;width:0;overflow:hidden;
+  background:var(--chrome);border-right:1px solid transparent;
+  display:flex;flex-direction:column;
+  transition:width .22s ease, border-color .22s ease;
+}
+body.outline-open .outline{width:16rem;border-right-color:var(--rule)}
+.outline-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:.5rem .45rem .35rem .85rem;min-width:16rem;
+  font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-soft);
+}
+.outline-list{flex:1;overflow-y:auto;overflow-x:hidden;padding:.1rem .4rem 2rem;min-width:16rem}
+.outline-list a{
+  display:block;text-decoration:none;color:var(--ink);
+  font-size:.83rem;line-height:1.3;padding:.3rem .5rem;border-radius:5px;
+  border-left:2px solid transparent;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;
+}
+.outline-list a:hover{background:rgba(35,38,43,.07)}
+html[data-theme="dark"] .outline-list a:hover{background:rgba(255,255,255,.08)}
+.outline-list a.d1{font-weight:600}
+.outline-list a.d2{padding-left:1.25rem}
+.outline-list a.d3{padding-left:2rem;font-size:.8rem;color:var(--ink-soft)}
+.outline-list a.d4,.outline-list a.d5,.outline-list a.d6{padding-left:2.75rem;font-size:.77rem;color:var(--ink-soft)}
+.outline-list a.active{border-left-color:var(--chalk);color:var(--chalk);background:rgba(174,70,48,.08)}
+.outline-empty{font-size:.8rem;color:var(--ink-soft);padding:.4rem .5rem;line-height:1.5}
+.outline-empty code{font-family:var(--mono);color:var(--chalk)}
+.outline-scrim{display:none}
+#btnOutline[aria-expanded="true"]{background:rgba(174,70,48,.12)}
+
+@media (max-width:820px){
+  /* on a phone the outline slides over the page instead of pushing it */
+  .outline{
+    position:absolute;top:0;bottom:0;left:0;z-index:30;width:min(18rem,84vw) !important;
+    transform:translateX(-102%);transition:transform .22s ease;
+    border-right:1px solid var(--rule);box-shadow:4px 0 18px var(--shadow);
+  }
+  body.outline-open .outline{transform:none}
+  .outline-head,.outline-list{min-width:0}
+  .outline-scrim{
+    display:block;position:absolute;inset:0;z-index:29;background:rgba(20,20,20,.28);
+    opacity:0;pointer-events:none;transition:opacity .22s ease;
+  }
+  body.outline-open .outline-scrim{opacity:1;pointer-events:auto}
+  .outline-list a{padding:.5rem .55rem;font-size:.9rem}
+}
+@media (prefers-reduced-motion:reduce){.outline,.outline-scrim{transition:none}}
 .pane{min-width:0;min-height:0;display:flex;flex-direction:column;flex:1}
 .divider{width:9px;flex:none;cursor:col-resize;background:transparent;
   display:flex;align-items:center;justify-content:center}
@@ -286,8 +337,8 @@ input[type=text]{font:inherit;font-size:.9rem;padding:.4rem .5rem;width:100%;
 @media print{
   @page{size:A4;margin:20mm 18mm}
   html,body{height:auto;overflow:visible;background:#fff}
-  header,.rail,footer,.divider,.pane.editor,dialog,.copy-btn{display:none !important}
-  main{display:block}
+  header,.rail,footer,.divider,.pane.editor,dialog,.copy-btn,.outline,.outline-scrim,.findbar{display:none !important}
+  main,.split{display:block}
   .pane.preview{display:block !important}
   .preview-wrap{overflow:visible;padding:0;background:#fff}
   .page{max-width:none;border:0;box-shadow:none;padding:0;background:#fff}
@@ -304,6 +355,11 @@ input[type=text]{font:inherit;font-size:.9rem;padding:.4rem .5rem;width:100%;
 <body data-view="write">
 
 <header>
+  <button class="btn icon" id="btnOutline" title="Outline (Ctrl/Cmd+Shift+O)" aria-label="Show outline"
+    aria-controls="outline" aria-expanded="false">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+      stroke-linecap="round"><path d="M4 5.5h16"/><path d="M8 10.5h12"/><path d="M12 15.5h8"/><path d="M8 20.5h12"/></svg>
+  </button>
   <div class="wordmark" id="wordmark">MD</div>
   <div class="filename" id="filename">untitled.md</div>
 
@@ -398,6 +454,18 @@ input[type=text]{font:inherit;font-size:.9rem;padding:.4rem .5rem;width:100%;
 </div>
 
 <main>
+  <aside class="outline" id="outline" aria-label="Outline">
+    <div class="outline-head">
+      <span>Outline</span>
+      <button class="btn icon" id="outlineClose" title="Hide outline" aria-label="Hide outline">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg>
+      </button>
+    </div>
+    <nav class="outline-list" id="outlineList"></nav>
+  </aside>
+  <div class="outline-scrim" id="outlineScrim"></div>
+  <div class="split">
   <section class="pane editor">
     <textarea id="source" spellcheck="true" autocapitalize="sentences"
       placeholder="# Start typing&#10;&#10;Markdown goes here. The rendered document appears beside it."></textarea>
@@ -408,6 +476,7 @@ input[type=text]{font:inherit;font-size:.9rem;padding:.4rem .5rem;width:100%;
       <article class="page"><div class="doc" id="doc"></div></article>
     </div>
   </section>
+  </div>
 </main>
 
 <footer>
@@ -479,6 +548,14 @@ const PREF_KEY  = "mdedit:" + APP.NAME + ":prefs";
 /* label -> data URI; declared early because the draft is restored
    before the rest of the image code is reached */
 const images = new Map();
+
+/* used by the first render, which runs before the code that owns them */
+let mirror = null;            // hidden copy of the editor, for measuring
+const MIRROR_PROPS = ["boxSizing","width","fontFamily","fontSize","fontWeight","fontStyle",
+  "lineHeight","letterSpacing","wordSpacing","textTransform","textIndent","tabSize",
+  "paddingTop","paddingRight","paddingBottom","paddingLeft",
+  "borderTopWidth","borderRightWidth","borderBottomWidth","borderLeftWidth"];
+let holdSync = false;         // pauses editor-leads scroll sync for one move
 
 function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -796,6 +873,161 @@ function recentreAfterKeyboard(pos){
   setTimeout(() => vv.removeEventListener("resize", again), 1200);
 }
 
+/* ---- outline -------------------------------------------------------
+   Built from the same lexer pass as the reverse sync: top-level
+   headings, their level, and where each starts in the source. Headings
+   inside code fences are never seen, because the lexer has already
+   claimed those lines as code.
+   ------------------------------------------------------------------ */
+let headings = [];              // {depth, text, offset}
+let headingSignature = "";
+let editorHeadingTops = null;   // pixel tops in the editor, measured lazily
+let outlineFollows = "editor";  // whichever pane was scrolled last
+
+function plainHeading(t){
+  return t
+    .replace(/!\[([^\]]*)\]\[[^\]]*\]/g, "$1")
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/!?\[([^\]]*)\]\[[^\]]*\]/g, "$1")
+    .replace(/<[^>]+>/g, "")
+    .replace(/(\*\*|__|\*|_|~~|`)/g, "")
+    .replace(/\s+#+\s*$/, "")
+    .trim() || "(untitled)";
+}
+
+function collectHeadings(md){
+  const out = [];
+  let tokens;
+  try { tokens = marked.lexer(md); } catch(e){ return out; }
+  let offset = 0;
+  for (const t of tokens){
+    if (t.type === "heading") out.push({depth:t.depth, text:plainHeading(t.text), offset});
+    offset += (t.raw || "").length;
+  }
+  return out;
+}
+
+function buildOutline(){
+  const list = document.getElementById("outlineList");
+  const next = collectHeadings(source.value);
+  const sig = JSON.stringify(next.map(h => [h.depth, h.text]));
+  headings = next;
+  editorHeadingTops = null;
+  if (sig === headingSignature) { updateActiveHeading(); return; }   // offsets refreshed, DOM unchanged
+  headingSignature = sig;
+
+  list.innerHTML = "";
+  if (!headings.length){
+    list.innerHTML = '<div class="outline-empty">No headings yet. Lines starting with '
+      + '<code>#</code>, <code>##</code>, <code>###</code>… appear here.</div>';
+    return;
+  }
+  // indent relative to the shallowest level used, so a file of ## and ###
+  // doesn't start half-way across the panel
+  const top = Math.min(...headings.map(h => h.depth));
+  headings.forEach((h, i) => {
+    const a = document.createElement("a");
+    a.className = "d" + Math.min(6, h.depth - top + 1);
+    a.textContent = h.text;
+    a.title = h.text;
+    a.dataset.index = i;
+    a.addEventListener("click", ev => { ev.preventDefault(); gotoHeading(i); });
+    list.appendChild(a);
+  });
+  updateActiveHeading();
+}
+
+function measureEditorHeadings(){
+  if (editorHeadingTops) return editorHeadingTops;
+  if (!source.clientWidth) return null;           // editor hidden
+  prepareMirror();
+  mirror.textContent = "";
+  const marks = [];
+  let last = 0;
+  for (const h of headings){
+    mirror.appendChild(document.createTextNode(source.value.slice(last, h.offset)));
+    const m = document.createElement("span");
+    m.textContent = "\u200b";
+    mirror.appendChild(m);
+    marks.push(m);
+    last = h.offset;
+  }
+  editorHeadingTops = marks.map(m => m.offsetTop);
+  return editorHeadingTops;
+}
+
+function previewHeadingFor(i){
+  const h = headings[i];
+  return h ? doc.querySelector('[data-src-offset="' + h.offset + '"]') : null;
+}
+
+function updateActiveHeading(){
+  if (!headings.length) return;
+  let active = -1;
+  const editorShown = source.clientWidth > 0;
+  const previewShown = previewWrap.clientWidth > 0;
+  const usePreview = previewShown && (outlineFollows === "preview" || !editorShown);
+  if (usePreview){
+    const wrapTop = previewWrap.getBoundingClientRect().top;
+    for (let i = 0; i < headings.length; i++){
+      const el = previewHeadingFor(i);
+      if (el && el.getBoundingClientRect().top - wrapTop <= 40) active = i;
+    }
+  } else if (editorShown){
+    const tops = measureEditorHeadings();
+    if (tops) tops.forEach((t, i) => { if (t - source.scrollTop <= 40) active = i; });
+  }
+  if (active < 0) active = 0;
+  const list = document.getElementById("outlineList");
+  list.querySelectorAll("a.active").forEach(a => a.classList.remove("active"));
+  const link = list.querySelector('a[data-index="' + active + '"]');
+  if (link){
+    link.classList.add("active");
+    // keep the highlighted entry in view inside the panel only
+    const lt = link.offsetTop, lb = lt + link.offsetHeight;
+    if (lt < list.scrollTop) list.scrollTop = lt - 8;
+    else if (lb > list.scrollTop + list.clientHeight) list.scrollTop = lb - list.clientHeight + 8;
+  }
+}
+
+function gotoHeading(i){
+  const h = headings[i];
+  if (!h) return;
+  const narrow = matchMedia("(max-width:820px)").matches;
+  const editorShown = source.clientWidth > 0;
+  const previewShown = previewWrap.clientWidth > 0;
+
+  if (editorShown){
+    // a caret at the heading, without opening the keyboard on a phone
+    if (!narrow) source.focus({preventScroll:true});
+    source.setSelectionRange(h.offset, h.offset);
+    scrollToOffset(h.offset, 0);
+  }
+  if (previewShown){
+    const el = previewHeadingFor(i);
+    if (el){
+      const delta = el.getBoundingClientRect().top - previewWrap.getBoundingClientRect().top;
+      previewWrap.scrollTop += delta - 12;
+    }
+  }
+  outlineFollows = editorShown ? "editor" : "preview";
+  const list = document.getElementById("outlineList");
+  list.querySelectorAll("a.active").forEach(a => a.classList.remove("active"));
+  const link = list.querySelector('a[data-index="' + i + '"]');
+  if (link) link.classList.add("active");
+  if (narrow) setOutline(false);
+}
+
+function setOutline(open){
+  document.body.classList.toggle("outline-open", open);
+  document.getElementById("btnOutline").setAttribute("aria-expanded", String(open));
+  document.getElementById("btnOutline").setAttribute("aria-label", open ? "Hide outline" : "Show outline");
+  if (!matchMedia("(max-width:820px)").matches){ prefs.outline = open; savePrefs(); }
+  // the panes change width when a docked panel opens, so wrapping changes too
+  editorHeadingTops = null;
+  if (open) setTimeout(updateActiveHeading, 240);
+}
+
 /* =================================================================
    4. State, rendering loop, autosave
    ================================================================= */
@@ -835,6 +1067,7 @@ function render(){
   addCopyButtons(doc);
   mapSourceOffsets(doc, full);
   renderDiagrams(doc);
+  buildOutline();
   const words = (md.trim().match(/[^\s]+/g) || []).length;
   countsEl.textContent = words + (words === 1 ? " word" : " words") + " · " + md.length + " characters";
   autosave();
@@ -1190,12 +1423,7 @@ function updateFindCount(){
    is filled with the text up to the offset; the height it reaches is
    where the character is drawn.
    ------------------------------------------------------------------ */
-let mirror = null;
-const MIRROR_PROPS = ["boxSizing","width","fontFamily","fontSize","fontWeight","fontStyle",
-  "lineHeight","letterSpacing","wordSpacing","textTransform","textIndent","tabSize",
-  "paddingTop","paddingRight","paddingBottom","paddingLeft",
-  "borderTopWidth","borderRightWidth","borderBottomWidth","borderLeftWidth"];
-function caretTop(pos){
+function prepareMirror(){
   if (!mirror){
     mirror = document.createElement("div");
     mirror.setAttribute("aria-hidden", "true");
@@ -1213,6 +1441,10 @@ function caretTop(pos){
   mirror.style.width = (cs.boxSizing === "border-box"
     ? source.clientWidth + borders
     : source.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) + "px";
+  return mirror;
+}
+function caretTop(pos){
+  prepareMirror();
   mirror.textContent = source.value.slice(0, pos);
   const mark = document.createElement("span");
   mark.textContent = "\u200b";
@@ -1222,11 +1454,11 @@ function caretTop(pos){
 
 /* scroll the editor so pos sits a third of the way down. The preview is
    left where it is: the editor-leads sync is paused for this one move. */
-let holdSync = false;
-function scrollToOffset(pos){
+function scrollToOffset(pos, fraction){
   const top = caretTop(pos);
+  const f = fraction === undefined ? 1/3 : fraction;
   holdSync = true;
-  source.scrollTop = Math.max(0, top - source.clientHeight / 3);
+  source.scrollTop = Math.max(0, top - source.clientHeight * f - (f === 0 ? 10 : 0));
   setTimeout(() => { holdSync = false; }, 120);
 }
 function gotoMatch(step){
@@ -1312,6 +1544,11 @@ document.addEventListener("keydown", ev => {
   if (!mod) return;
   const k = ev.key.toLowerCase();
   const canEdit = editorVisible();
+  if (k === "o" && ev.shiftKey){
+    ev.preventDefault();
+    setOutline(!document.body.classList.contains("outline-open"));
+    return;
+  }
   if (k === "s"){ ev.preventDefault(); saveMarkdown(false); }
   else if (k === "b" && canEdit){ ev.preventDefault(); actions.bold(); }
   else if (k === "i" && canEdit){ ev.preventDefault(); actions.italic(); }
@@ -1595,6 +1832,7 @@ document.addEventListener("click", e => { if (!saveMenu.contains(e.target)) togg
 document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
   toggleSaveMenu(false);
+  if (matchMedia("(max-width:820px)").matches && document.body.classList.contains("outline-open")) setOutline(false);
   if (!findBar.hidden) closeFind();
 });
 
@@ -1623,6 +1861,7 @@ document.getElementById("btnAbout").onclick = () => {
     "<li><kbd>Ctrl/Cmd</kbd>+<kbd>S</kbd> save · <kbd>O</kbd> open · <kbd>P</kbd> print</li>" +
     "<li><kbd>Ctrl/Cmd</kbd>+<kbd>B</kbd> bold · <kbd>I</kbd> italic · <kbd>K</kbd> link</li>" +
     "<li><kbd>Ctrl/Cmd</kbd>+<kbd>F</kbd> find and replace · <kbd>G</kbd> next match</li>" +
+    "<li><kbd>Ctrl/Cmd</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd> show or hide the outline</li>" +
     "<li><kbd>Tab</kbd> indents a list item, <kbd>Shift</kbd>+<kbd>Tab</kbd> outdents it</li>" +
     "<li><kbd>Enter</kbd> continues a list, quote or table row; on an empty one it stops</li></ul>" +
     "<p>Images are kept outside the editable text — the document holds only a short " +
@@ -1656,7 +1895,7 @@ function applySplit(){
 applySplit();
 divider.addEventListener("pointerdown", ev => {
   divider.setPointerCapture(ev.pointerId);
-  const rect = document.querySelector("main").getBoundingClientRect();
+  const rect = document.querySelector(".split").getBoundingClientRect();
   const move = e => {
     const pct = ((e.clientX - rect.left) / rect.width) * 100;
     prefs.split = Math.min(80, Math.max(20, pct));
@@ -1672,6 +1911,21 @@ divider.addEventListener("pointerdown", ev => {
   divider.addEventListener("pointerup", up);
 });
 divider.addEventListener("dblclick", () => { prefs.split = 50; applySplit(); savePrefs(); });
+
+/* ---- outline wiring ---- */
+document.getElementById("btnOutline").onclick = () =>
+  setOutline(!document.body.classList.contains("outline-open"));
+document.getElementById("outlineClose").onclick = () => setOutline(false);
+document.getElementById("outlineScrim").onclick = () => setOutline(false);
+source.addEventListener("scroll", () => { outlineFollows = "editor"; requestAnimationFrame(updateActiveHeading); });
+previewWrap.addEventListener("scroll", () => {
+  if (!holdSync && !syncing) outlineFollows = "preview";
+  requestAnimationFrame(updateActiveHeading);
+});
+if ("ResizeObserver" in window){
+  new ResizeObserver(() => { editorHeadingTops = null; }).observe(source);
+}
+if (prefs.outline && !matchMedia("(max-width:820px)").matches) setOutline(true);
 
 /* ---- scroll sync, editor leads ---- */
 let syncing = false;
