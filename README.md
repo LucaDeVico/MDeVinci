@@ -104,6 +104,9 @@ ink and the rest in red chalk; otherwise it is shown plain.
   only when the diagram is drawn, so the source stays short. Saving, reopening
   and HTML export all keep the picture. Other Markdown viewers will not know what
   `img-1` is, so the node shows without its picture there.
+  Mermaid rejects any diagram source over 50,000 characters, which a photo alone
+  exceeds, so diagrams are drawn with a small blank stand-in of the picture's
+  proportions and the real picture is put into the finished drawing.
 - Large images will overflow the browser's local-storage quota for drafts; the
   status bar says so once when that happens. The file itself is unaffected.
 - `Enter` continues lists, quotes and table rows; on an empty item it stops.

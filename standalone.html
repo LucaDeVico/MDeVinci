@@ -4176,7 +4176,7 @@ globalThis["mermaid"] = globalThis.__esbuild_esm_mermaid_nm["mermaid"].default;
 const APP_CONFIG = {
   NAME: "MDeVinci",              // placeholder — change at will
   TAGLINE: "Markdown, written and read",
-  VERSION: "0.5",
+  VERSION: "0.5.1",
   AUTHOR: "Luca De Vico"
 };
 
@@ -4487,7 +4487,7 @@ async function renderDiagrams(root){
   }
   for (let i = 0; i < blocks.length; i++){
     const b = blocks[i];
-    const src = resolveDiagramImages(b.querySelector(".mmd-src").textContent);
+    const {src, swaps} = await prepareDiagramImages(b.querySelector(".mmd-src").textContent);
 
     const cached = diagramCache.get(src);
     if (cached){
@@ -4510,7 +4510,8 @@ async function renderDiagrams(root){
     }
 
     try{
-      const { svg } = await mm.render("mmd-" + (++mermaidSeq), src);
+      const rendered = await mm.render("mmd-" + (++mermaidSeq), src);
+      const svg = putPicturesBack(rendered.svg, swaps);
       b.classList.remove("stale");
       b.innerHTML = svg;
       const el = b.querySelector("svg");
@@ -4533,9 +4534,47 @@ async function renderDiagrams(root){
    img: "img-3", and the data URI is put in only when the diagram is
    drawn, so the source stays short and readable.
    ------------------------------------------------------------------ */
-function resolveDiagramImages(src){
-  return src.replace(/(img:\s*)(["']?)(img-\d+)\2(?![\w-])/g, (m, pre, q, label) =>
-    images.has(label) ? pre + '"' + images.get(label) + '"' : m);
+/* Mermaid refuses any diagram source over 50,000 characters, and a photo
+   as a data URI is often ten times that. So the diagram is drawn with a
+   small blank stand-in for each picture, and the real picture is put into
+   the finished drawing afterwards. The stand-in has the picture's own
+   proportions, because Mermaid sizes the node from the image it is given. */
+const standInCache = new Map();          // label -> {uri, stand}
+function standInFor(label){
+  const uri = images.get(label);
+  const hit = standInCache.get(label);
+  if (hit && hit.uri === uri) return Promise.resolve(hit.stand);
+  return new Promise(resolve => {
+    const im = new Image();
+    im.onload = () => {
+      const k = 100 / Math.max(im.naturalWidth || 1, im.naturalHeight || 1);
+      const c = document.createElement("canvas");
+      c.width = Math.max(1, Math.round((im.naturalWidth || 1) * k));
+      c.height = Math.max(1, Math.round((im.naturalHeight || 1) * k));
+      // the name parameter makes each stand-in unique, so it can be found again
+      const stand = c.toDataURL("image/png").replace("data:image/png", "data:image/png;name=" + label);
+      standInCache.set(label, {uri, stand});
+      resolve(stand);
+    };
+    im.onerror = () => resolve(null);
+    im.src = uri;
+  });
+}
+async function prepareDiagramImages(src){
+  const re = /(img:\s*)(["']?)(img-\d+)\2(?![\w-])/g;
+  const labels = [...new Set([...src.matchAll(re)].map(m => m[3]).filter(l => images.has(l)))];
+  const swaps = [];
+  const stands = {};
+  for (const l of labels){
+    const st = await standInFor(l);
+    if (st){ stands[l] = st; swaps.push([st, images.get(l)]); }
+  }
+  const out = src.replace(re, (m, pre, q, label) => stands[label] ? pre + '"' + stands[label] + '"' : m);
+  return {src: out, swaps};
+}
+function putPicturesBack(svg, swaps){
+  for (const [stand, real] of swaps) svg = svg.split(stand).join(real);
+  return svg;
 }
 
 /* ---- copy buttons on code blocks (preview only, never exported) ---- */
@@ -5044,11 +5083,19 @@ async function insertImageRef(label, alt){
   const caption = alt.replace(/"/g, "'");
   const node = "Pic" + n + '@{ img: "' + label + '", label: "' + caption
              + '", pos: "b", w: ' + w + ", h: " + h + ', constraint: "on" }';
+  // the node gets a line of its own and never splits a statement: on a blank
+  // line it goes right there, at the start of a line it goes above it,
+  // anywhere else it goes on a new line below
   const v = source.value, c = source.selectionStart;
   const lineStart = v.lastIndexOf("\n", c - 1) + 1;
-  const before = v.slice(lineStart, c);
-  const text = (before.trim() ? "\n  " : (before.length ? "" : "  ")) + node;
-  replaceSelection(text);
+  let lineEnd = v.indexOf("\n", c); if (lineEnd === -1) lineEnd = v.length;
+  const line = v.slice(lineStart, lineEnd), before = v.slice(lineStart, c);
+  let at, text;
+  if (!line.trim()){ at = c; text = (before.length ? "" : "  ") + node; }
+  else if (!before.trim()){ at = lineStart; text = "  " + node + "\n"; }
+  else { at = lineEnd; text = "\n  " + node; }
+  source.setSelectionRange(at, at);
+  replaceSelection(text, text.length - (text.endsWith("\n") ? 1 : 0));
   setStatus("Added node Pic" + n + " — connect it, e.g.  Pic" + n + " --> B", 6000);
 }
 
