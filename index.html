@@ -711,7 +711,7 @@ async function renderDiagrams(root){
   }
   for (let i = 0; i < blocks.length; i++){
     const b = blocks[i];
-    const src = b.querySelector(".mmd-src").textContent;
+    const src = resolveDiagramImages(b.querySelector(".mmd-src").textContent);
 
     const cached = diagramCache.get(src);
     if (cached){
@@ -749,6 +749,17 @@ async function renderDiagrams(root){
   }
   if (live) lastGoodDiagram.length = blocks.length;
   sweepMermaidLeftovers();
+}
+
+/* ---- pictures inside diagram nodes ---------------------------------
+   Mermaid's image shape takes a URL:  A@{ img: "…", label: "…" }.
+   In the text it names a picture from the image library instead,
+   img: "img-3", and the data URI is put in only when the diagram is
+   drawn, so the source stays short and readable.
+   ------------------------------------------------------------------ */
+function resolveDiagramImages(src){
+  return src.replace(/(img:\s*)(["']?)(img-\d+)\2(?![\w-])/g, (m, pre, q, label) =>
+    images.has(label) ? pre + '"' + images.get(label) + '"' : m);
 }
 
 /* ---- copy buttons on code blocks (preview only, never exported) ---- */
@@ -1178,7 +1189,11 @@ function starterDocument(){
    held here and is written back into the file on save, so a saved
    .md is still self-contained and portable.
    ------------------------------------------------------------------ */
-function imageIsUsed(label){ return source.value.includes("[" + label + "]"); }
+function imageIsUsed(label){
+  if (source.value.includes("[" + label + "]")) return true;              // ![alt][img-3]
+  const re = new RegExp("img:\\s*[\"']?" + label + "(?![\\w-])");        // img: "img-3" in a diagram
+  return re.test(source.value);
+}
 function usedImages(){ return [...images.keys()].filter(imageIsUsed); }
 
 /* the text as it will be written to a file: references plus definitions */
@@ -1201,7 +1216,7 @@ function extractImages(text){
 function nextImageLabel(){
   let n = 0;
   images.forEach((v, k) => { n = Math.max(n, parseInt(k.slice(4), 10)); });
-  const re = /\[img-(\d+)\]/g;
+  const re = /\bimg-(\d+)\b/g;
   let m;
   while ((m = re.exec(source.value))) n = Math.max(n, parseInt(m[1], 10));
   return "img-" + (n + 1);
@@ -1215,6 +1230,52 @@ function updateImageCount(){
   btn.title = "Manage embedded images";
 }
 
+/* the mermaid fence the caret is in, or null */
+function mermaidFenceAtCaret(){
+  const upto = source.value.slice(0, source.selectionStart);
+  const fences = [...upto.matchAll(/^\s*```\s*([\w-]*)/gm)];
+  if (fences.length % 2 === 0) return null;                 // not inside a fence
+  const open = fences[fences.length - 1];
+  if (open[1].toLowerCase() !== "mermaid") return null;
+  const start = open.index;
+  const rest = source.value.indexOf("\n```", source.selectionStart);
+  const end = rest === -1 ? source.value.length : rest;
+  return source.value.slice(start, end);
+}
+
+function imageSize(uri, box){
+  return new Promise(resolve => {
+    const im = new Image();
+    im.onload = () => {
+      const k = box / Math.max(im.naturalWidth || 1, im.naturalHeight || 1);
+      resolve({w: Math.max(16, Math.round(im.naturalWidth * k)), h: Math.max(16, Math.round(im.naturalHeight * k))});
+    };
+    im.onerror = () => resolve({w: box, h: box});
+    im.src = uri;
+  });
+}
+
+async function insertImageRef(label, alt){
+  const fence = mermaidFenceAtCaret();
+  if (!fence){
+    replaceSelection("![" + alt + "][" + label + "]");
+    return;
+  }
+  // inside a diagram: a new node with the picture, a free id, the right proportions
+  let n = 1;
+  while (new RegExp("\\bPic" + n + "\\b").test(fence)) n++;
+  const {w, h} = await imageSize(images.get(label), 90);
+  const caption = alt.replace(/"/g, "'");
+  const node = "Pic" + n + '@{ img: "' + label + '", label: "' + caption
+             + '", pos: "b", w: ' + w + ", h: " + h + ', constraint: "on" }';
+  const v = source.value, c = source.selectionStart;
+  const lineStart = v.lastIndexOf("\n", c - 1) + 1;
+  const before = v.slice(lineStart, c);
+  const text = (before.trim() ? "\n  " : (before.length ? "" : "  ")) + node;
+  replaceSelection(text);
+  setStatus("Added node Pic" + n + " — connect it, e.g.  Pic" + n + " --> B", 6000);
+}
+
 function addImageFile(f){
   if (!f) return;
   if (!/^image\//.test(f.type)){ setStatus("That file is not an image", 4000); return; }
@@ -1224,7 +1285,7 @@ function addImageFile(f){
     const label = nextImageLabel();
     images.set(label, reader.result);
     const alt = f.name.replace(/\.[^.]+$/, "");
-    replaceSelection("![" + alt + "][" + label + "]");
+    insertImageRef(label, alt);
     updateImageCount();
     setStatus("Embedded " + f.name + " as " + label, 3500);
   };
@@ -1257,7 +1318,7 @@ function openImagesDialog(){
     insert.textContent = "Insert";
     insert.onclick = () => {
       document.getElementById("imagesDlg").close();
-      replaceSelection("![image][" + label + "]");
+      insertImageRef(label, "image");
     };
     const del = document.createElement("button");
     del.className = "btn outlined";
@@ -1871,7 +1932,8 @@ document.getElementById("btnAbout").onclick = () => {
     "<li><kbd>Enter</kbd> continues a list, quote or table row; on an empty one it stops</li></ul>" +
     "<p>Images are kept outside the editable text — the document holds only a short " +
     "reference, and the picture is written into the file when you save. The image count " +
-    "in the status bar opens the list.</p>" +
+    "in the status bar opens the list. With the cursor inside a <code>mermaid</code> block, " +
+    "the image button adds a diagram node holding the picture instead.</p>" +
     "<p style='color:var(--ink-soft);font-size:.82rem'>Markdown by marked, maths by KaTeX, " +
     "diagrams by Mermaid, highlighting by highlight.js, sanitising by DOMPurify.</p>";
   document.getElementById("aboutDlg").showModal();

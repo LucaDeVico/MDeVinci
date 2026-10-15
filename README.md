@@ -96,6 +96,14 @@ ink and the rest in red chalk; otherwise it is shown plain.
   file when you save, so the `.md` stays self-contained and portable. Opening such
   a file pulls the definitions back out again. The image count in the status bar
   opens a list where you can re-insert or remove them.
+- Pictures in diagram nodes: put the cursor inside a ` ```mermaid ` block and use
+  the image button (or Insert in the image list). Instead of `![…]`, it adds a node
+  such as `Pic1@{ img: "img-1", label: "photo", pos: "b", w: 90, h: 68, constraint: "on" }`,
+  sized to the picture's proportions; connect it like any node (`Pic1 --> A`).
+  `img-1` names a picture in the image library and is swapped for the real data
+  only when the diagram is drawn, so the source stays short. Saving, reopening
+  and HTML export all keep the picture. Other Markdown viewers will not know what
+  `img-1` is, so the node shows without its picture there.
 - Large images will overflow the browser's local-storage quota for drafts; the
   status bar says so once when that happens. The file itself is unaffected.
 - `Enter` continues lists, quotes and table rows; on an empty item it stops.
