@@ -107,6 +107,12 @@ ink and the rest in red chalk; otherwise it is shown plain.
   Mermaid rejects any diagram source over 50,000 characters, which a photo alone
   exceeds, so diagrams are drawn with a small blank stand-in of the picture's
   proportions and the real picture is put into the finished drawing.
+- Snake layouts: put each row in a `subgraph` with its own `direction` and link the
+  rows to each other (`row1 --> row2`); linking boxes across rows directly makes
+  Mermaid ignore the row directions. Mermaid draws that row-to-row arrow between
+  the middles of the rows. Add a comment line such as `%% link B --> D` and this
+  tool redraws it from box B to box D once the layout is done, carrying any label
+  along. Other viewers ignore the comment and keep the centred arrow.
 - Large images will overflow the browser's local-storage quota for drafts; the
   status bar says so once when that happens. The file itself is unaffected.
 - `Enter` continues lists, quotes and table rows; on an empty item it stops.

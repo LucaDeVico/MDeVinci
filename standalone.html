@@ -4176,7 +4176,7 @@ globalThis["mermaid"] = globalThis.__esbuild_esm_mermaid_nm["mermaid"].default;
 const APP_CONFIG = {
   NAME: "MDeVinci",              // placeholder — change at will
   TAGLINE: "Markdown, written and read",
-  VERSION: "0.5.1",
+  VERSION: "0.6",
   AUTHOR: "Luca De Vico"
 };
 
@@ -4510,8 +4510,9 @@ async function renderDiagrams(root){
     }
 
     try{
-      const rendered = await mm.render("mmd-" + (++mermaidSeq), src);
-      const svg = putPicturesBack(rendered.svg, swaps);
+      const renderId = "mmd-" + (++mermaidSeq);
+      const rendered = await mm.render(renderId, src);
+      const svg = putPicturesBack(rerouteLinks(rendered.svg, renderId, linkDirectives(src)), swaps);
       b.classList.remove("stale");
       b.innerHTML = svg;
       const el = b.querySelector("svg");
@@ -4572,6 +4573,98 @@ async function prepareDiagramImages(src){
   const out = src.replace(re, (m, pre, q, label) => stands[label] ? pre + '"' + stands[label] + '"' : m);
   return {src: out, swaps};
 }
+/* ---- %% link C --> D ------------------------------------------------
+   Mermaid ignores a group's own direction as soon as one of its boxes
+   is linked to a box outside it, so rows are linked group to group
+   (row1 --> row2), and Mermaid draws that arrow between the middles of
+   the two groups. A comment line  %% link C --> D  asks this tool to
+   redraw that arrow from box C to box D once the layout is done. Other
+   viewers skip the comment and keep the centred arrow.
+   ------------------------------------------------------------------ */
+function linkDirectives(src){
+  return [...src.matchAll(/^\s*%%\s*link\s+([\w-]+)\s*-->\s*([\w-]+)\s*$/gm)].map(m => [m[1], m[2]]);
+}
+
+function rerouteLinks(svgText, renderId, links){
+  if (!links.length) return svgText;
+  const host = document.createElement("div");
+  host.style.cssText = "position:absolute;left:-100000px;top:0;visibility:hidden";
+  host.innerHTML = svgText;
+  document.body.appendChild(host);
+  try{
+    const svg = host.querySelector("svg");
+    if (!svg) return svgText;
+    const esc = t => t.replace(/[-\\^$*+?.()|[\]{}]/g, "\\$&");
+    const findNode = name => [...svg.querySelectorAll("g.node")]
+      .find(g => new RegExp("-flowchart-" + esc(name) + "-\\d+$").test(g.id));
+    const screenBox = el => el.getBoundingClientRect();
+    // the smallest group whose frame contains the box is the group it belongs to
+    const groupOf = node => {
+      const r = screenBox(node), cx = r.x + r.width / 2, cy = r.y + r.height / 2;
+      let best = null, area = Infinity;
+      svg.querySelectorAll("g.cluster").forEach(c => {
+        const q = screenBox(c);
+        if (cx >= q.left && cx <= q.right && cy >= q.top && cy <= q.bottom && q.width * q.height < area){
+          best = c; area = q.width * q.height;
+        }
+      });
+      return best ? best.id.slice(renderId.length + 1) : null;
+    };
+    for (const [from, to] of links){
+      const a = findNode(from), b = findNode(to);
+      if (!a || !b) continue;
+      const ga = groupOf(a), gb = groupOf(b);
+      if (!ga || !gb || ga === gb) continue;
+      const path = [...svg.querySelectorAll("path[data-id]")]
+        .find(pth => new RegExp("^L_" + esc(ga) + "_" + esc(gb) + "_\\d+$").test(pth.getAttribute("data-id")));
+      if (!path) continue;
+      // work in the arrow's own coordinates: groups with their own direction
+      // are drawn as nested graphs, each with its own offset
+      const inv = path.getScreenCTM().inverse();
+      const local = (x, y) => { const pt = svg.createSVGPoint(); pt.x = x; pt.y = y; return pt.matrixTransform(inv); };
+      const ra = screenBox(a), rb = screenBox(b);
+      const A = {l: local(ra.left, ra.top), r: local(ra.right, ra.bottom)};
+      const B = {l: local(rb.left, rb.top), r: local(rb.right, rb.bottom)};
+      const acx = (A.l.x + A.r.x) / 2, acy = (A.l.y + A.r.y) / 2;
+      const bcx = (B.l.x + B.r.x) / 2, bcy = (B.l.y + B.r.y) / 2;
+      let d, mid;
+      if (Math.abs(bcy - acy) >= Math.abs(bcx - acx)){        // mostly above/below: leave by top or bottom
+        const down = bcy > acy;
+        const y1 = down ? A.r.y : A.l.y, y2 = down ? B.l.y : B.r.y, ym = (y1 + y2) / 2;
+        d = Math.abs(acx - bcx) < 1.5
+          ? `M${acx},${y1}L${bcx},${y2}`
+          : `M${acx},${y1}L${acx},${ym}L${bcx},${ym}L${bcx},${y2}`;
+        mid = {x: (acx + bcx) / 2, y: ym};
+      } else {                                                 // mostly side by side
+        const right = bcx > acx;
+        const x1 = right ? A.r.x : A.l.x, x2 = right ? B.l.x : B.r.x, xm = (x1 + x2) / 2;
+        d = Math.abs(acy - bcy) < 1.5
+          ? `M${x1},${acy}L${x2},${bcy}`
+          : `M${x1},${acy}L${xm},${acy}L${xm},${bcy}L${x2},${bcy}`;
+        mid = {x: xm, y: (acy + bcy) / 2};
+      }
+      path.setAttribute("d", d);
+      path.style.strokeLinejoin = "round";
+      // a label on that arrow follows it
+      const label = [...svg.querySelectorAll("g.edgeLabel")]
+        .find(l => l.querySelector("[data-id='" + path.getAttribute("data-id") + "']"));
+      if (label && label.parentNode){
+        const m = path.getCTM(), pm = label.parentNode.getCTM();
+        if (m && pm){
+          const pt = svg.createSVGPoint(); pt.x = mid.x; pt.y = mid.y;
+          const p2 = pt.matrixTransform(m).matrixTransform(pm.inverse());
+          label.setAttribute("transform", `translate(${p2.x}, ${p2.y})`);
+        }
+      }
+    }
+    return host.innerHTML;
+  } catch(err){
+    return svgText;                    // never lose a diagram over a cosmetic step
+  } finally {
+    host.remove();
+  }
+}
+
 function putPicturesBack(svg, swaps){
   for (const [stand, real] of swaps) svg = svg.split(stand).join(real);
   return svg;
