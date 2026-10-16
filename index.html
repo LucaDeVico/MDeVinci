@@ -273,6 +273,22 @@ html[data-theme="dark"] .doc code{background:rgba(255,255,255,.08)}
 .copy-btn.done{color:var(--chalk);border-color:var(--chalk);opacity:1}
 @media (hover:none){.copy-btn{opacity:.75}}
 
+/* save buttons on a diagram */
+.doc .mermaid-block{position:relative}
+.diagram-tools{
+  position:absolute;top:.3rem;right:.3rem;display:flex;gap:.3rem;
+  opacity:0;transition:opacity .15s;
+}
+.mermaid-block:hover .diagram-tools,.diagram-tools:focus-within{opacity:1}
+@media (hover:none){.diagram-tools{opacity:.75}}
+.diagram-tools button{
+  font-family:var(--sans);font-size:.7rem;line-height:1;
+  display:flex;align-items:center;gap:.25rem;
+  background:var(--paper);color:var(--ink-soft);
+  border:1px solid var(--rule);border-radius:4px;padding:.28rem .4rem;cursor:pointer;
+}
+.diagram-tools button:hover{color:var(--ink);border-color:var(--ink-soft)}
+
 /* ---------- status bar ---------- */
 footer{
   flex:none;display:flex;align-items:center;gap:.8rem;
@@ -337,7 +353,7 @@ input[type=text]{font:inherit;font-size:.9rem;padding:.4rem .5rem;width:100%;
 @media print{
   @page{size:A4;margin:20mm 18mm}
   html,body{height:auto;overflow:visible;background:#fff}
-  header,.rail,footer,.divider,.pane.editor,dialog,.copy-btn,.outline,.outline-scrim,.findbar{display:none !important}
+  header,.rail,footer,.divider,.pane.editor,dialog,.copy-btn,.diagram-tools,.outline,.outline-scrim,.findbar{display:none !important}
   main,.split{display:block}
   .pane.preview{display:block !important}
   .preview-wrap{overflow:visible;padding:0;background:#fff}
@@ -711,7 +727,9 @@ async function renderDiagrams(root){
   }
   for (let i = 0; i < blocks.length; i++){
     const b = blocks[i];
-    const {src, swaps} = await prepareDiagramImages(b.querySelector(".mmd-src").textContent);
+    const raw = b.querySelector(".mmd-src").textContent;
+    b.dataset.mmd = raw;                       // kept for saving the diagram as an image
+    const {src, swaps} = await prepareDiagramImages(raw);
 
     const cached = diagramCache.get(src);
     if (cached){
@@ -719,7 +737,7 @@ async function renderDiagrams(root){
       b.innerHTML = cached;
       const el = b.querySelector("svg");
       if (el){ el.style.maxWidth = "100%"; el.style.height = "auto"; }
-      if (live) lastGoodDiagram[i] = cached;
+      if (live){ lastGoodDiagram[i] = cached; addDiagramTools(b); }
       continue;
     }
 
@@ -743,7 +761,7 @@ async function renderDiagrams(root){
       if (el){ el.style.maxWidth = "100%"; el.style.height = "auto"; }
       diagramCache.set(src, svg);
       if (diagramCache.size > 40) diagramCache.delete(diagramCache.keys().next().value);
-      if (live) lastGoodDiagram[i] = svg;
+      if (live){ lastGoodDiagram[i] = svg; addDiagramTools(b); }
     }catch(err){
       sweepMermaidLeftovers();
       showIncomplete(b, i, live);
@@ -889,6 +907,121 @@ function rerouteLinks(svgText, renderId, links){
   }
 }
 
+/* ---- saving a diagram as SVG or PNG ---------------------------------
+   The preview's diagrams keep their labels as HTML inside the SVG, which
+   browsers show but drawing programs (Inkscape, Illustrator, PowerPoint)
+   drop. For saving, the diagram is drawn again with plain SVG text, then
+   given what a file on its own needs: a size, a background, the real
+   pictures, and a font list in place of the page's font variable.
+   ------------------------------------------------------------------ */
+const EXPORT_FONTS = "system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif";
+const SVG_NS = "http://www.w3.org/2000/svg", XLINK_NS = "http://www.w3.org/1999/xlink";
+
+function addDiagramTools(block){
+  if (block.classList.contains("stale") || !block.querySelector("svg")) return;
+  const bar = document.createElement("div");
+  bar.className = "diagram-tools";
+  const icon = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    + 'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>';
+  for (const [fmt, title] of [["svg", "Save as SVG (vector)"], ["png", "Save as PNG (high resolution)"]]){
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.title = title;
+    btn.innerHTML = icon + "<span>" + fmt.toUpperCase() + "</span>";
+    btn.addEventListener("click", ev => { ev.stopPropagation(); saveDiagram(block, fmt); });
+    bar.appendChild(btn);
+  }
+  block.appendChild(bar);
+}
+
+async function diagramFile(raw){
+  const mm = await loadMermaid();
+  const {src, swaps} = await prepareDiagramImages(raw);
+  const id = "mmdx-" + (++mermaidSeq);
+  const plain = '%%{init: {"htmlLabels": false} }%%\n' + src;
+  const r = await mm.render(id, plain);
+  sweepMermaidLeftovers();
+  const text = putPicturesBack(rerouteLinks(r.svg, id, linkDirectives(src)), swaps);
+
+  const d = new DOMParser().parseFromString(text, "image/svg+xml");
+  const svg = d.documentElement;
+  const vb = (svg.getAttribute("viewBox") || "").trim().split(/[\s,]+/).map(Number);
+  if (vb.length !== 4 || vb.some(n => !isFinite(n))) throw new Error("diagram has no size");
+  const [x, y, w, h] = vb;
+  svg.setAttribute("width", w);
+  svg.setAttribute("height", h);
+  svg.removeAttribute("style");                    // drops the preview's max-width
+  svg.setAttribute("xmlns", SVG_NS);
+  svg.setAttributeNS("http://www.w3.org/2000/xmlns/", "xmlns:xlink", XLINK_NS);
+  const paper = getComputedStyle(document.documentElement).getPropertyValue("--paper").trim() || "#ffffff";
+  const bg = d.createElementNS(SVG_NS, "rect");
+  bg.setAttribute("x", x); bg.setAttribute("y", y);
+  bg.setAttribute("width", w); bg.setAttribute("height", h);
+  bg.setAttribute("fill", paper);
+  svg.insertBefore(bg, svg.firstChild);
+  // Mermaid writes each word as its own piece of text; some programs place each
+  // piece separately and spread the words apart, so each line becomes one piece
+  svg.querySelectorAll("tspan.text-outer-tspan").forEach(row => {
+    const parts = [...row.children];
+    if (parts.length < 2 || !parts.every(t => t.localName === "tspan" && !t.children.length)) return;
+    const same = a => parts.every(t => t.getAttribute(a) === parts[0].getAttribute(a));
+    if (!same("font-style") || !same("font-weight")) return;   // mixed bold/italic stays as it is
+    parts[0].textContent = parts.map(t => t.textContent).join("");
+    parts.slice(1).forEach(t => t.remove());
+  });
+  // older programs only read xlink:href on pictures
+  svg.querySelectorAll("image").forEach(im => {
+    const href = im.getAttribute("href");
+    if (href && !im.getAttributeNS(XLINK_NS, "href")) im.setAttributeNS(XLINK_NS, "xlink:href", href);
+  });
+  let out = new XMLSerializer().serializeToString(svg);
+  out = out.split("var(--sans)").join(EXPORT_FONTS);
+  return {svg: '<?xml version="1.0" encoding="UTF-8"?>\n' + out, width: w, height: h, paper};
+}
+
+function svgToPng(svgText, width, height, paper){
+  // large enough to print sharply, small enough for phone browsers' canvas limits
+  const scale = Math.max(1, Math.min(4, Math.sqrt(16e6 / (width * height))));
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(new Blob([svgText], {type: "image/svg+xml"}));
+    const im = new Image();
+    im.onload = () => {
+      const c = document.createElement("canvas");
+      c.width = Math.round(width * scale);
+      c.height = Math.round(height * scale);
+      const g = c.getContext("2d");
+      g.fillStyle = paper;
+      g.fillRect(0, 0, c.width, c.height);
+      g.drawImage(im, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      c.toBlob(b => b ? resolve({blob: b, w: c.width, h: c.height}) : reject(new Error("PNG encoding failed")), "image/png");
+    };
+    im.onerror = () => { URL.revokeObjectURL(url); reject(new Error("the diagram could not be drawn")); };
+    im.src = url;
+  });
+}
+
+async function saveDiagram(block, fmt){
+  const raw = block.dataset.mmd;
+  if (!raw) return;
+  const n = [...doc.querySelectorAll(".mermaid-block")].indexOf(block) + 1;
+  const base = (filename.replace(/\.(md|markdown|mdown|txt)$/i, "") || "document") + "-diagram-" + n;
+  setStatus("Preparing " + fmt.toUpperCase() + "…");
+  try{
+    const f = await diagramFile(raw);
+    if (fmt === "svg"){
+      download(new Blob([f.svg], {type: "image/svg+xml"}), base + ".svg");
+      setStatus("Saved " + base + ".svg", 3000);
+    } else {
+      const png = await svgToPng(f.svg, f.width, f.height, f.paper);
+      download(png.blob, base + ".png");
+      setStatus("Saved " + base + ".png (" + png.w + " × " + png.h + " px)", 4000);
+    }
+  }catch(err){
+    setStatus("Could not save the diagram: " + (err.message || err), 6000);
+  }
+}
+
 function putPicturesBack(svg, swaps){
   for (const [stand, real] of swaps) svg = svg.split(stand).join(real);
   return svg;
@@ -980,6 +1113,7 @@ function wordAtPoint(x, y){
 }
 
 function jumpToSource(target, x, y){
+  if (target && target.closest && target.closest(".diagram-tools, .copy-btn")) return;
   const block = target && target.closest ? target.closest("[data-src-offset]") : null;
   if (!block) return;
   let pos = parseInt(block.dataset.srcOffset, 10);

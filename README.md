@@ -113,6 +113,13 @@ ink and the rest in red chalk; otherwise it is shown plain.
   the middles of the rows. Add a comment line such as `%% link B --> D` and this
   tool redraws it from box B to box D once the layout is done, carrying any label
   along. Other viewers ignore the comment and keep the centred arrow.
+- Saving a diagram as an image: hover a diagram (on a phone the buttons are always
+  faintly visible) and press SVG or PNG. The SVG is vector: the diagram is redrawn
+  with its labels as plain SVG text, so drawing programs and slide software keep
+  the text, and pictures in nodes are embedded. The PNG is the same drawing at up
+  to 4× resolution, capped so phone browsers can still produce it. Both use the
+  page background of the current theme. Files are named after the document,
+  e.g. `notes-diagram-2.svg`.
 - Large images will overflow the browser's local-storage quota for drafts; the
   status bar says so once when that happens. The file itself is unaffected.
 - `Enter` continues lists, quotes and table rows; on an empty item it stops.
